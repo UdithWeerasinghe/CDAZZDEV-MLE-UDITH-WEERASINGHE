@@ -1,0 +1,199 @@
+{
+  "generated_at": "2026-09-13T15:48:04.170742+00:00",
+  "total_examples": 113,
+  "splits": {
+    "train": 89,
+    "validation": 12,
+    "test": 12
+  },
+  "split_ratios_actual": {
+    "train": 0.788,
+    "validation": 0.106,
+    "test": 0.106
+  },
+  "split_method": "stratified by clause_type",
+  "teacher_model": {
+    "tier": "teacher",
+    "providers": [
+      {
+        "provider": "gemini",
+        "model": "gemini-3.5-flash-lite",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"
+      },
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b",
+        "base_url": "https://api.groq.com/openai/v1"
+      },
+      {
+        "provider": "openrouter",
+        "model": "nvidia/nemotron-3-super-120b-a12b:free",
+        "base_url": "https://openrouter.ai/api/v1"
+      }
+    ]
+  },
+  "student_model": "mistralai/Mistral-7B-Instruct-v0.3",
+  "teacher_student_distinct": true,
+  "duplicate_guard": {
+    "threshold": 0.72,
+    "rejections": 36,
+    "rejection_detail": [
+      {
+        "example_index": 30,
+        "similarity": 0.7675,
+        "closest_to": 5
+      },
+      {
+        "example_index": 30,
+        "similarity": 0.7334,
+        "closest_to": 5
+      },
+      {
+        "example_index": 30,
+        "similarity": 0.7605,
+        "closest_to": 5
+      },
+      {
+        "example_index": 33,
+        "similarity": 0.7614,
+        "closest_to": 20
+      },
+      {
+        "example_index": 55,
+        "similarity": 0.7738,
+        "closest_to": 6
+      },
+      {
+        "example_index": 57,
+        "similarity": 0.7563,
+        "closest_to": 20
+      },
+      {
+        "example_index": 66,
+        "similarity": 0.728,
+        "closest_to": 17
+      },
+      {
+        "example_index": 66,
+        "similarity": 0.7428,
+        "closest_to": 5
+      },
+      {
+        "example_index": 72,
+        "similarity": 0.7239,
+        "closest_to": 46
+      },
+      {
+        "example_index": 72,
+        "similarity": 0.7421,
+        "closest_to": 46
+      },
+      {
+        "example_index": 72,
+        "similarity": 0.7526,
+        "closest_to": 46
+      },
+      {
+        "example_index": 81,
+        "similarity": 0.7418,
+        "closest_to": 20
+      },
+      {
+        "example_index": 83,
+        "similarity": 0.776,
+        "closest_to": 57
+      },
+      {
+        "example_index": 84,
+        "similarity": 0.778,
+        "closest_to": 23
+      },
+      {
+        "example_index": 84,
+        "similarity": 0.748,
+        "closest_to": 23
+      },
+      {
+        "example_index": 84,
+        "similarity": 0.835,
+        "closest_to": 23
+      },
+      {
+        "example_index": 87,
+        "similarity": 0.7214,
+        "closest_to": 37
+      },
+      {
+        "example_index": 89,
+        "similarity": 0.7405,
+        "closest_to": 63
+      },
+      {
+        "example_index": 90,
+        "similarity": 0.7296,
+        "closest_to": 52
+      },
+      {
+        "example_index": 96,
+        "similarity": 0.7782,
+        "closest_to": 46
+      }
+    ]
+  },
+  "generation_failures": [
+    {
+      "index": 30,
+      "clause_type": "interest_provision",
+      "reason": "failed after 3 attempts"
+    },
+    {
+      "index": 72,
+      "clause_type": "governing_law_jurisdiction",
+      "reason": "failed after 3 attempts"
+    },
+    {
+      "index": 81,
+      "clause_type": "change_of_control",
+      "reason": "failed after 3 attempts"
+    },
+    {
+      "index": 84,
+      "clause_type": "governing_law_jurisdiction",
+      "reason": "failed after 3 attempts"
+    },
+    {
+      "index": 96,
+      "clause_type": "governing_law_jurisdiction",
+      "reason": "failed after 3 attempts"
+    },
+    {
+      "index": 108,
+      "clause_type": "governing_law_jurisdiction",
+      "reason": "failed after 3 attempts"
+    },
+    {
+      "index": 120,
+      "clause_type": "governing_law_jurisdiction",
+      "reason": "failed after 3 attempts"
+    }
+  ],
+  "clause_type_distribution": {
+    "affirmative_covenant": 10,
+    "change_of_control": 9,
+    "conditions_precedent": 10,
+    "event_of_default": 10,
+    "financial_covenant": 10,
+    "governing_law_jurisdiction": 5,
+    "indemnity": 10,
+    "interest_provision": 9,
+    "negative_covenant": 10,
+    "repayment_prepayment": 10,
+    "representation_warranty": 10,
+    "security_collateral": 10
+  },
+  "files": {
+    "train": "C:\\projects\\CDAZZDEV\\CDAZZDEV-MLE-UDITH-WEERASINGHE\\CDAZZDEV-MLE-UDITH-WEERASINGHE\\task2_genai\\data\\train.jsonl",
+    "validation": "C:\\projects\\CDAZZDEV\\CDAZZDEV-MLE-UDITH-WEERASINGHE\\CDAZZDEV-MLE-UDITH-WEERASINGHE\\task2_genai\\data\\validation.jsonl",
+    "test": "C:\\projects\\CDAZZDEV\\CDAZZDEV-MLE-UDITH-WEERASINGHE\\CDAZZDEV-MLE-UDITH-WEERASINGHE\\task2_genai\\data\\test.jsonl"
+  }
+}

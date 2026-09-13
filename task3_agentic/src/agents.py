@@ -372,10 +372,37 @@ def _trim_to_budget(messages: list[Any], budget: int = PROMPT_CHAR_BUDGET) -> li
         running += cost
     kept.reverse()
 
+    kept = _repair_turn_order(kept)
+
     dropped = len(messages) - len(head) - len(kept)
     if dropped:
         logger.info("Trimmed %d older turn(s) to fit the prompt budget.", dropped)
     return head + kept
+
+
+def _repair_turn_order(window: list[Any]) -> list[Any]:
+    """Drop leading turns until the window opens on a user turn.
+
+    Trimming by size alone can cut through the middle of a tool exchange, so the
+    surviving window begins with a bare tool response, or with an assistant turn
+    that calls a tool with no user turn before it. The OpenAI-compatible
+    providers accept that; Gemini's native API rejects it outright:
+
+        400 INVALID_ARGUMENT - "Please ensure that function call turn comes
+        immediately after a user turn or after a function response turn."
+
+    A conversation is only valid if it starts somewhere a user actually spoke,
+    so walk forward to the first human turn and begin there. Dropping a little
+    more context is the cheap half of this trade; sending an unparseable
+    conversation costs the whole call.
+    """
+    for index, message in enumerate(window):
+        if message.__class__.__name__ == "HumanMessage":
+            if index:
+                logger.debug("Dropped %d orphaned turn(s) to keep the transcript valid.", index)
+            return window[index:]
+    # No human turn survived: every remaining turn is an orphan fragment.
+    return []
 
 
 def message_text(message: Any) -> str:

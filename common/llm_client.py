@@ -133,7 +133,7 @@ class Provider:
 # runtime is skipped silently, so the code survives model deprecation.
 # ORDER IS THE FAILOVER ORDER, and it is set by how much headroom each free tier
 # actually gives:
-#   gemini      1,500 requests/day, 250k tokens/min   <- most headroom, so first
+#   gemini      per-MODEL daily caps; lite variants outlast the rest <- first
 #   groq          200,000 tokens/day                  <- about 3 full Task 3 runs
 #   openrouter         50 requests/day                <- exhausts fastest
 # Groq led this list until its daily ceiling was reached mid-session, after which
@@ -159,27 +159,40 @@ PROVIDERS: tuple[Provider, ...] = (
         # model answered 400 over the OpenAI-compatible endpoint, and completed
         # in 3.6-5.2s over the native one.
         agent_client="google_genai",
-        # Probed live against this key with a real tool-calling request. Being
-        # LISTED is not the same as being USABLE: /models still returns
-        # gemini-2.5-flash, but calling it answers 404 "no longer available to
-        # new users", and the pro tier answers 429 on the free plan. Only ids
-        # that actually returned a tool call are listed here.
+        # Ordered by MEASURED free-tier headroom, which is not what the model
+        # names suggest. Google publishes no per-model free limits (they appear
+        # only in the AI Studio dashboard and inside a 429's QuotaFailure), so
+        # these were read out of the API itself:
+        #
+        #   gemini-3.6-flash   GenerateRequestsPerDayPerProjectPerModel = 20
+        #   gemini-3.5-flash   same, 20/day
+        #   *-flash-lite, *-preview   still serving after an afternoon of probing
+        #
+        # The headline "1,500 requests/day" is a project-level figure, not a
+        # per-model one: the flagship flash models allow TWENTY calls a day, and
+        # a single Task 3 run needs more than that. The lite and preview
+        # variants carry the work; the flagships sit last as a late fallback.
+        #
+        # Being LISTED is also not being USABLE: /models still advertises
+        # gemini-2.5-flash, which answers 404 "no longer available to new users".
         preferences={
             Tier.REASONING: (
-                "gemini-3.6-flash",         # 6.5s, newest general model
-                "gemini-3.5-flash",         # 14.5s
-                "gemini-3-flash-preview",   # 1.4s
-                "gemini-3.5-flash-lite",    # 2.5s
+                "gemini-3.5-flash-lite",          # newest lite, real headroom
+                "gemini-3-flash-preview",
+                "gemini-3.1-flash-lite",
+                "gemini-3.1-flash-lite-preview",
+                "gemini-3.6-flash",              # 20/day - last resort
             ),
             Tier.FAST: (
-                "gemini-3.1-flash-lite",    # 1.0s, fastest that accepted tools
+                "gemini-3.1-flash-lite",         # 1.0s, fastest that took tools
                 "gemini-3.5-flash-lite",
+                "gemini-3.1-flash-lite-preview",
                 "gemini-3-flash-preview",
             ),
             Tier.TEACHER: (
-                "gemini-3.6-flash",
-                "gemini-3.5-flash",
+                "gemini-3.5-flash-lite",
                 "gemini-3-flash-preview",
+                "gemini-3.1-flash-lite",
             ),
         },
     ),

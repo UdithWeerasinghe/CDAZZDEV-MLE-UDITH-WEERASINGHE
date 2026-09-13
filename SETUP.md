@@ -142,7 +142,7 @@ does **not** appear.
 | `GROQ_API_KEY` | https://console.groq.com/keys | Free, no card |
 <!-- Fill in at least one. Three is strongly advised: see the quota note below. -->
 | `OPENROUTER_API_KEY` | https://openrouter.ai/keys | Free tier |
-| `GEMINI_API_KEY` | https://aistudio.google.com/apikey | Free, no card |
+| `GEMINI_API_KEY` | https://aistudio.google.com/apikey | Free, no card (per-model daily caps) |
 | `HF_TOKEN` | https://huggingface.co/settings/tokens — **WRITE** scope | Free |
 
 To load `.env` in a local terminal session:
