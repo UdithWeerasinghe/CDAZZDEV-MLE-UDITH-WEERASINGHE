@@ -319,10 +319,17 @@ def fetch_news(
     Returns (items, warnings). Never raises: an empty list with a warning is a
     valid outcome that Task 1B must be able to handle.
     """
+    # Ordered by RELEVANCE, not convenience. Google News RSS is a *query* against
+    # the ticker and company name, so every item it returns is about the company.
+    # The yfinance and Yahoo RSS endpoints return a generic "recommended reading"
+    # feed: for NVDA they supplied ten headlines of which seven were about
+    # Alphabet, Microsoft and XRP. That still satisfies a ten-headline count while
+    # making per-headline sentiment meaningless, because the sentiment being
+    # measured is not about this company. Relevance first, count second.
     sources: list[tuple[str, Callable[[], list[NewsItem]]]] = [
+        ("google_rss", lambda: _news_from_google_rss(ticker, per_source_limit, company_name)),
         ("yfinance", lambda: _news_from_yfinance(ticker, per_source_limit)),
         ("yahoo_rss", lambda: _news_from_yahoo_rss(ticker, per_source_limit)),
-        ("google_rss", lambda: _news_from_google_rss(ticker, per_source_limit, company_name)),
         ("newsapi", lambda: _news_from_newsapi(ticker, per_source_limit, company_name)),
     ]
 

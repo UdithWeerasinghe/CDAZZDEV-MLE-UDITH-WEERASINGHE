@@ -61,6 +61,9 @@ class TrendRegime(str, Enum):
     UNDETERMINED = "undetermined"
 
 
+DEFAULT_VOLATILITY_WINDOW = 30  # Requested window when no measurement came back.
+
+
 class SentimentLabel(str, Enum):
     POSITIVE = "positive"
     NEGATIVE = "negative"
@@ -104,6 +107,48 @@ class SentimentReading(BaseModel):
     positive: int = Field(default=0, ge=0)
     negative: int = Field(default=0, ge=0)
     neutral: int = Field(default=0, ge=0)
+
+
+class QuantJudgement(BaseModel):
+    """The part of the handoff a language model is actually good at.
+
+    Agent A used to be asked to emit an entire `QuantBrief`: roughly twenty
+    nested numeric fields, under `extra="forbid"`, transcribed by hand out of
+    tool output it had read earlier. It failed three attempts in a row on a live
+    run -- inventing field names (`annualised_volatility_pct`), dropping
+    required ones (`ticker`, `as_of`, `confidence`), and emitting objects where
+    strings belonged -- which cost the handoff and the critique loop entirely.
+
+    The figures were never the model's to produce: they already exist, exactly,
+    in the tool payloads. So the model is asked only for judgement -- what
+    regime this is, which measurements matter, what is missing, how sure it is
+    -- and `build_quant_brief` fills the numbers in from the measurements. An
+    LLM retyping numbers is a transcription risk with no upside.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    trend_regime: TrendRegime
+    quantitative_findings: list[str] = Field(
+        min_length=2, max_length=8,
+        description="Numeric, evidence-backed observations. Each must contain a figure.",
+    )
+    data_gaps: list[str] = Field(
+        default_factory=list,
+        description="REQUIRED (may be empty). What could not be determined, and why.",
+    )
+    confidence: float = Field(ge=0.0, le=1.0)
+
+    @field_validator("quantitative_findings")
+    @classmethod
+    def findings_must_carry_numbers(cls, value: list[str]) -> list[str]:
+        for finding in value:
+            if not any(character.isdigit() for character in finding):
+                raise ValueError(
+                    f"quantitative finding {finding!r} contains no figure. "
+                    "State the measured value, e.g. 'RSI-14 at 62.4, below the 70 threshold'."
+                )
+        return value
 
 
 class QuantBrief(BaseModel):
@@ -185,6 +230,73 @@ class QuantBrief(BaseModel):
         else:
             lines += ["", "DECLARED DATA GAPS: none"]
         return "\n".join(lines)
+
+
+def build_quant_brief(
+    judgement: "QuantJudgement",
+    measurements: dict[str, dict],
+    *,
+    ticker: str,
+) -> "QuantBrief":
+    """Assemble the handoff from MEASURED payloads plus the model's judgement.
+
+    `measurements` is `ToolContext.results`: the payload each tool actually
+    returned, keyed by tool name. Every number in the resulting brief is copied
+    from those payloads, so Agent B reads figures that were measured rather than
+    figures a model retyped.
+
+    A tool that never succeeded is not silently absent: its gap is appended to
+    `data_gaps`. That is the same principle the mandatory `data_gaps` field
+    exists for -- Agent B cannot see Agent A's tools, so an unmeasured quantity
+    must be declared or it reads as measured-and-unremarkable.
+    """
+    price_payload = measurements.get("get_price_data") or {}
+    vol_payload = measurements.get("calculate_volatility") or {}
+    sent_payload = measurements.get("llm_sentiment") or {}
+
+    def only(payload: dict, model: type[BaseModel]) -> dict:
+        """Keep the keys the target model declares; drop the rest."""
+        return {k: v for k, v in payload.items() if k in model.model_fields}
+
+    price = PriceSnapshot(**only(price_payload, PriceSnapshot))
+
+    volatility = VolatilityReading(
+        window_days=vol_payload.get("window_days") or DEFAULT_VOLATILITY_WINDOW,
+        annualised_volatility=vol_payload.get("annualised_volatility"),
+        percentile_vs_two_year=vol_payload.get("percentile_vs_two_year"),
+    )
+
+    sentiment = SentimentReading(
+        label=sent_payload.get("label") or SentimentLabel.UNAVAILABLE,
+        # The tool names this `aggregate_score`; the schema calls it `score`.
+        # Mapping it here, once, is what the model kept getting wrong.
+        score=sent_payload.get("aggregate_score"),
+        headlines_analysed=sent_payload.get("headlines_analysed") or 0,
+        positive=sent_payload.get("positive") or 0,
+        negative=sent_payload.get("negative") or 0,
+        neutral=sent_payload.get("neutral") or 0,
+    )
+
+    gaps = list(judgement.data_gaps)
+    for payload, gap in (
+        (price_payload, "Price and technical indicators were not retrieved."),
+        (vol_payload, "Realised volatility was not measured; risk sizing cannot rely on it."),
+        (sent_payload, "Automated news sentiment was unavailable for this run."),
+    ):
+        if not payload and gap not in gaps:
+            gaps.append(gap)
+
+    return QuantBrief(
+        ticker=ticker,
+        as_of=price_payload.get("as_of") or datetime.now(timezone.utc).date().isoformat(),
+        price=price,
+        volatility=volatility,
+        sentiment=sentiment,
+        trend_regime=judgement.trend_regime,
+        quantitative_findings=judgement.quantitative_findings,
+        data_gaps=gaps,
+        confidence=judgement.confidence,
+    )
 
 
 class ClarificationRequest(BaseModel):

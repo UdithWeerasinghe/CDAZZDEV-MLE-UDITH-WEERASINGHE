@@ -8,7 +8,7 @@ piece of adapted open-source code is recorded here.
 ## 1. AI assistance
 
 **Assistant used:** Claude (`claude-opus-5`), via the Claude web interface (paid tier).
-**Dates:** 2026-09-10.
+**Dates:** 2026-09-10 (build), 2026-09-13 (debugging session, see below).
 
 ### On the tier
 
@@ -58,6 +58,28 @@ the date. The full list:
 | `task3_agentic/dashboard.py` | Streamlit dashboard over `agent_trace.jsonl` |
 | Notebooks (all three) | Structure, narration and rubric self-check cells |
 
+### Second session — execution and debugging (2026-09-13)
+
+**Assistant used:** Claude (`claude-opus-5`) via Claude Code (CLI), on Windows 11.
+
+The first session wrote the code; this one ran it end to end for the first time and fixed
+what that surfaced. Every change below was diagnosed from an actual failing run, and each
+is documented at the point of the fix:
+
+| File | Defect found by running it | Fix |
+|---|---|---|
+| `task3_agentic/src/agents.py` | `NameError: add_messages` / `NameError: State` — LangGraph >= 1.0 resolves state annotations with `get_type_hints()` against module globals, but `from __future__ import annotations` makes them strings and both names were function-local | Import `add_messages` at module level; drop the unresolvable `State` parameter annotations |
+| `task3_agentic/src/tools.py` | `llm_sentiment` always failed: `cannot import name 'AggregateSentiment' from 'schemas'` — Task 1 and Task 3 both define `schemas`, and Task 3's directory precedes Task 1's on `sys.path` | Load Task 1's module by file path under a distinct `sys.modules` key |
+| `task3_agentic/src/agents.py` | Provider 400, `'messages' : minimum number of items is 1` — a failed handoff left `b_messages` empty and Agent B invoked the model with no transcript | Seed a degraded brief so Agent B continues on qualitative sources and declares the gap |
+| `common/llm_client.py` | Groq returns HTTP **413** (not 429) when a request exceeds the free tier's 8,000 tokens/minute; 413 was not retryable, so it escaped instead of failing over | Add 413 to `RETRYABLE_STATUS` |
+| `common/llm_client.py` | Model discovery fell back to `aion-labs/aion-2.0`, a **paid** model, violating the brief's free-tier cost policy; all four preferred OpenRouter models had been delisted | Add a `free_only_suffix` constraint and refresh the OpenRouter lists to free, tool-capable models |
+| `task3_agentic/src/agents.py` | Tool observations were replayed at 6,000 characters each, exhausting the per-minute token budget within a few iterations | Cap replayed observations at 2,000 characters; the full output still reaches `agent_trace.jsonl` |
+| `task1_financial/src/data_pipeline.py` | For NVDA the yfinance feed returned ten headlines of which seven were about other companies, making per-headline sentiment meaningless | Reorder the source chain so Google News RSS (a ticker-scoped query) is tried first |
+| Task 3 notebook | A reused `calls_before` variable silently broke the short-term-memory rubric check; one failing tool aborted the five-tool smoke cell | Rename the variables, bind tools to the memory probe, make the smoke cell report per-tool failure |
+| Task 2 notebook | `MANUAL_LABELS` shipped placeholder labels that would have been reported as a real hallucination rate | Add a `LABELS_REVIEWED` gate that refuses to present the figure as genuine until the review is actually done |
+| `task3_agentic/src/schemas.py`, `agents.py`, `tools.py` | Agent A could not produce a valid `QuantBrief` in three attempts, losing the structured handoff and the critique loop. It was being asked to transcribe ~20 nested numeric fields out of tool output under `extra="forbid"` | Split the handoff: `QuantJudgement` asks the model only for regime, findings, gaps and confidence; `build_quant_brief` fills the figures in from `ToolContext.results`, the payloads the tools actually returned |
+| `task3_agentic/src/tools.py` | One terse `brief_reason` failed `HeadlineSentimentBatch` validation for the entire batch, discarding eleven good classifications with the bad one | Validate per headline, keep what passes, and report `headlines_rejected` rather than hiding the drop |
+
 ### Teacher model used for data generation (Task 2A)
 
 The full system prompt is in **`task2_genai/prompts/teacher_system_prompt.md`**, generated
@@ -102,9 +124,9 @@ All free and open source. Versions pinned in `requirements.txt`.
 
 | Source | Use | Access |
 |---|---|---|
-| Yahoo Finance (via `yfinance`) | OHLCV price history, fundamentals, news | Free, no key |
+| Yahoo Finance (via `yfinance`) | OHLCV price history, fundamentals; news fallback | Free, no key |
 | Yahoo Finance RSS | News fallback | Free, no key |
-| Google News RSS | News fallback | Free, no key |
+| Google News RSS | News retrieval (primary; ticker-scoped query) | Free, no key |
 | NewsAPI | Optional news fallback | Free tier, skipped when no key is set |
 | DuckDuckGo (via `ddgs`) | Agent web search | Free, no key |
 | Groq | LLM inference (primary) | Free tier |

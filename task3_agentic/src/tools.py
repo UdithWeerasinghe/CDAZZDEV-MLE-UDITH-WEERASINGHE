@@ -40,11 +40,13 @@ from __future__ import annotations
 import logging
 import sys
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
 import numpy as np
+from pydantic import ValidationError
 import pandas as pd
 
 # Reuse Task 1's verified indicator implementations rather than reimplementing.
@@ -60,6 +62,39 @@ logger = logging.getLogger(__name__)
 MAX_SEARCH_RESULTS = 6
 SEARCH_RETRY_ATTEMPTS = 3
 DEFAULT_VOL_WINDOW = 30
+
+
+def _first_error(exc: "ValidationError") -> str:
+    """Condense a Pydantic error to one readable line for the trace."""
+    try:
+        first = exc.errors()[0]
+        location = ".".join(str(part) for part in first.get("loc", ()))
+        return f"{location}: {first.get('msg', 'invalid')}"
+    except Exception:  # noqa: BLE001 - diagnostics must never raise
+        return str(exc)[:160]
+
+
+def _task1_sentiment_schemas():
+    """Return (AggregateSentiment, HeadlineSentimentBatch) from Task 1's schemas.
+
+    Loaded by file path rather than module name: `schemas` is ambiguous in this
+    process because Task 1 and Task 3 each ship one, and Task 3's directory sits
+    earlier on sys.path. Cached under a unique sys.modules key so the module is
+    executed once.
+    """
+    import importlib.util
+    import sys as _sys
+
+    key = "task1_financial_schemas"
+    module = _sys.modules.get(key)
+    if module is None:
+        path = Path(__file__).resolve().parents[2] / "task1_financial" / "src" / "schemas.py"
+        spec = importlib.util.spec_from_file_location(key, path)
+        module = importlib.util.module_from_spec(spec)
+        _sys.modules[key] = module
+        spec.loader.exec_module(module)
+    return (module.AggregateSentiment, module.HeadlineSentimentBatch,
+            module.HeadlineSentiment)
 
 
 def ok(data: Any, **extra: Any) -> dict[str, Any]:
@@ -86,14 +121,40 @@ class ToolContext:
     price_cache: dict[str, pd.DataFrame] = field(default_factory=dict)
     news_cache: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     agent_name: str = "agent"
+    # Last successful payload per tool name. This exists so that downstream code
+    # can read the MEASURED figures directly instead of asking a language model
+    # to retype them out of its context window. Transcription is the single
+    # least reliable thing an LLM can be asked to do with numbers, and the
+    # Task 3B handoff previously depended on it.
+    results: dict[str, dict[str, Any]] = field(default_factory=dict)
 
+    @contextmanager
     def traced(self, tool: str, inputs: dict[str, Any]):
-        """Return the tracer's context manager, or a no-op if tracing is off."""
-        if self.tracer is None:
-            from contextlib import nullcontext
+        """Trace one tool call and retain its payload.
 
-            return nullcontext({})
-        return self.tracer.record(tool, inputs, agent=self.agent_name)
+        Yields the tracer's slot (or a bare dict when tracing is off) so tools
+        can keep assigning `slot["output"]` exactly as before. On the way out,
+        a successful payload is copied into `self.results[tool]`.
+        """
+        if self.tracer is None:
+            slot: dict[str, Any] = {}
+            try:
+                yield slot
+            finally:
+                self._remember(tool, slot)
+            return
+
+        with self.tracer.record(tool, inputs, agent=self.agent_name) as slot:
+            try:
+                yield slot
+            finally:
+                self._remember(tool, slot)
+
+    def _remember(self, tool: str, slot: dict[str, Any]) -> None:
+        """Keep the payload of a successful call; ignore failure envelopes."""
+        output = slot.get("output")
+        if isinstance(output, dict) and output.get("ok") is not False:
+            self.results[tool] = output
 
 
 # ---------------------------------------------------------------------------
@@ -482,7 +543,12 @@ def build_tools(context: ToolContext, names: list[str] | None = None) -> list[An
                 return result
 
             try:
-                from schemas import AggregateSentiment, HeadlineSentimentBatch  # Task 1 schemas.
+                # Task 1 and Task 3 each define a module named `schemas`, and
+                # task3_agentic/src sits earlier on sys.path, so a plain
+                # `from schemas import ...` binds to the Task 3 module and raises
+                # ImportError. Load Task 1's by file path under a distinct name.
+                (AggregateSentiment, HeadlineSentimentBatch,
+                 HeadlineSentiment) = _task1_sentiment_schemas()
                 import prompts
 
                 trimmed = headlines
@@ -494,7 +560,31 @@ def build_tools(context: ToolContext, names: list[str] | None = None) -> list[An
                 )
                 payload = context.llm.chat_json(messages, temperature=0.0,
                                                 max_tokens=170 * len(trimmed) + 300)
-                batch = HeadlineSentimentBatch.model_validate(payload)
+                # Validate PER HEADLINE, not as one batch. `brief_reason`
+                # requires at least four words, and a single terse answer
+                # ("Burry shorting NVDA") used to fail `model_validate` for the
+                # whole batch -- discarding eleven good classifications because
+                # of one bad one, and costing the brief its sentiment entirely.
+                # Dropping only the offending items keeps the measurement, and
+                # the count of what was dropped is reported rather than hidden.
+                candidates = payload.get("results") if isinstance(payload, dict) else None
+                if not isinstance(candidates, list):
+                    raise ValueError(f"expected a 'results' list, got {type(payload).__name__}")
+
+                kept, rejected = [], []
+                for item in candidates:
+                    try:
+                        kept.append(HeadlineSentiment.model_validate(item))
+                    except ValidationError as exc:
+                        rejected.append(_first_error(exc))
+
+                if not kept:
+                    raise ValueError(
+                        f"no headline survived validation ({len(rejected)} rejected); "
+                        f"first error: {rejected[0] if rejected else 'unknown'}"
+                    )
+
+                batch = HeadlineSentimentBatch(results=kept)
                 aggregate = AggregateSentiment.from_batch(batch)
 
                 data = {
@@ -506,6 +596,7 @@ def build_tools(context: ToolContext, names: list[str] | None = None) -> list[An
                     "negative": aggregate.negative_count,
                     "mean_confidence": aggregate.mean_confidence,
                     "low_diversity_warning": aggregate.degenerate_warning,
+                    "headlines_rejected": len(rejected),
                     "per_headline": [
                         {"headline": r.headline[:120], "sentiment": r.sentiment.value,
                          "confidence": r.confidence, "reason": r.brief_reason}

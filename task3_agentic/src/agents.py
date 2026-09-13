@@ -62,15 +62,28 @@ from schemas import (  # noqa: E402
     ClarificationRequest,
     ClarificationResponse,
     QuantBrief,
+    QuantJudgement,
     ResearchReport,
+    build_quant_brief,
 )
 from tools import AGENT_A_TOOLS, AGENT_B_TOOLS, ToolContext, build_tools  # noqa: E402
+
+# _add_messages_module_level
+# LangGraph >=1.0 resolves state-class annotations with get_type_hints() against
+# this module's globals. Combined with `from __future__ import annotations`
+# (which makes every annotation a string), a function-local import of
+# `add_messages` is invisible to that lookup and raises NameError at build time.
+try:
+    from langgraph.graph.message import add_messages  # noqa: E402
+except ImportError:  # langgraph is not needed by the offline test suite.
+    add_messages = None  # type: ignore[assignment]
 
 logger = logging.getLogger(__name__)
 
 MAX_AGENT_ITERATIONS = 8      # Hard stop. An agent that will not finish must not run forever.
 MAX_STRUCTURED_ATTEMPTS = 3
 MAX_CRITIQUE_ROUNDS = 1       # The brief asks for one visible cycle.
+TOOL_MESSAGE_CHAR_BUDGET = 2000  # Per observation replayed to the model; see make_tool_node.
 
 
 # ---------------------------------------------------------------------------
@@ -126,7 +139,13 @@ def make_tool_node(tools: list[Any], messages_key: str = "messages") -> Any:
                 result = {"ok": False, "error": f"{type(exc).__name__}: {exc}",
                           "suggestion": "Try an alternative tool or proceed without this data."}
             outputs.append(ToolMessage(
-                content=json.dumps(result, default=str)[:6000],
+                # 2000, not 6000. Groq's free tier allows 8000 tokens per MINUTE
+                # across the whole conversation, and the agent re-sends the entire
+                # transcript on every turn, so a few 6000-character observations
+                # exhaust the budget within two or three iterations. The full,
+                # untruncated result is still written to agent_trace.jsonl -- this
+                # caps only what is replayed back to the model.
+                content=json.dumps(result, default=str)[:TOOL_MESSAGE_CHAR_BUDGET],
                 name=name, tool_call_id=call["id"],
             ))
         return {messages_key: outputs}
@@ -420,7 +439,7 @@ def build_single_agent(
         iterations: int
         report: ResearchReport | None
 
-    def agent_node(state: State) -> dict:
+    def agent_node(state) -> dict:
         """Decide the next action. This node IS the 'replan' half of the cycle."""
         iterations = state.get("iterations", 0)
         if iterations >= max_iterations:
@@ -439,14 +458,14 @@ def build_single_agent(
         )
         return {"messages": [response], "iterations": iterations + 1}
 
-    def route(state: State) -> Literal["tools", "synthesise"]:
+    def route(state) -> Literal["tools", "synthesise"]:
         """Conditional edge - the model's own output decides, nothing is scripted."""
         last = state["messages"][-1]
         if getattr(last, "tool_calls", None) and state.get("iterations", 0) <= max_iterations:
             return "tools"
         return "synthesise"
 
-    def synthesise_node(state: State) -> dict:
+    def synthesise_node(state) -> dict:
         """Force the final answer into the required three-section structure."""
         instruction = HumanMessage(content=(
             "Now produce the final research report from everything you gathered.\n\n"
@@ -674,7 +693,7 @@ def build_multi_agent(
         forced_critique: bool
 
     # -- Agent A ------------------------------------------------------------
-    def agent_a_node(state: State) -> dict:
+    def agent_a_node(state) -> dict:
         count = state.get("a_iterations", 0)
         if count >= max_iterations:
             return {"a_messages": [AIMessage(content="Measurement budget reached; "
@@ -683,28 +702,60 @@ def build_multi_agent(
         response = invoke_with_recovery(model_a, state["a_messages"], label="AgentA")
         return {"a_messages": [response], "a_iterations": count + 1}
 
-    def route_a(state: State) -> Literal["tools_a", "handoff"]:
+    def route_a(state) -> Literal["tools_a", "handoff"]:
         last = state["a_messages"][-1]
         if getattr(last, "tool_calls", None) and state.get("a_iterations", 0) <= max_iterations:
             return "tools_a"
         return "handoff"
 
-    def handoff_node(state: State) -> dict:
+    def handoff_node(state) -> dict:
         """Agent A → Agent B. Validated QuantBrief or the pipeline stops here."""
         print("\n── HANDOFF · Agent A → Agent B ──")
         instruction = HumanMessage(content=(
-            f"Produce the structured quantitative brief for {state['ticker']} now, "
-            "from the measurements you gathered. Remember: every "
-            "quantitative_finding must contain a figure, and data_gaps must "
-            "honestly list anything you could not measure."
+            f"Summarise your judgement of {state['ticker']} now.\n\n"
+            "Do NOT restate the raw measurements as fields - the price, "
+            "volatility and sentiment figures are attached automatically from "
+            "the tool results. Give only:\n"
+            "  trend_regime           - one of uptrend, downtrend, rangebound, undetermined\n"
+            "  quantitative_findings  - 2 to 8 strings, each containing a figure\n"
+            "  data_gaps              - anything you could not measure, and why\n"
+            "  confidence             - a number between 0 and 1"
         ))
-        brief = structured_call(
-            chat_model, list(state["a_messages"]) + [instruction], QuantBrief,
-            label="quant_brief",
+        judgement = structured_call(
+            chat_model, list(state["a_messages"]) + [instruction], QuantJudgement,
+            label="quant_judgement",
         )
+
+        # The figures come from the measurements, not from the model. See
+        # QuantJudgement's docstring for why this split exists.
+        brief = None
+        if judgement is not None:
+            try:
+                brief = build_quant_brief(
+                    judgement, context_a.results, ticker=state["ticker"],
+                )
+            except ValidationError as exc:
+                logger.warning("[quant_brief] assembly failed: %s", exc)
+                brief = None
         if brief is None:
-            print("   Agent A failed to produce a valid brief.")
-            return {"quant_brief": None}
+            # Agent A could not produce a schema-valid brief. Agent B must still
+            # run: it has its own tools and can report qualitatively, provided it
+            # is told the numbers are missing. Returning no b_messages here left
+            # Agent B invoking the model with an empty message list, which the
+            # provider rejects outright ("'messages' : minimum number of items is
+            # 1") -- turning a recoverable degradation into a dead pipeline.
+            print("   Agent A failed to produce a valid brief - "
+                  "Agent B will proceed on qualitative sources alone.")
+            degraded_seed = HumanMessage(content=(
+                f"Agent A could NOT produce a validated quantitative brief for "
+                f"{state['ticker']}; no price, volatility or sentiment figures are "
+                f"available to you, and you cannot retrieve them yourself.\n\n"
+                f"Proceed using only get_news and web_search. Write the report from "
+                f"qualitative evidence, and record the absence of quantitative data "
+                f"as an explicit data caveat. Do not invent figures."
+            ))
+            return {"quant_brief": None,
+                    "b_messages": [SystemMessage(content=AGENT_B_SYSTEM), degraded_seed]}
 
         brief.ticker = state["ticker"]
         print(f"   QuantBrief validated — confidence {brief.confidence:.2f}, "
@@ -725,22 +776,33 @@ def build_multi_agent(
         return {"quant_brief": brief, "b_messages": [SystemMessage(content=AGENT_B_SYSTEM), seed]}
 
     # -- Agent B ------------------------------------------------------------
-    def agent_b_node(state: State) -> dict:
+    def agent_b_node(state) -> dict:
         count = state.get("b_iterations", 0)
+        if not state.get("b_messages"):
+            # Defensive: every provider rejects a zero-message request, and that
+            # 400 is unrecoverable mid-graph. Seed rather than die.
+            return {"b_messages": [
+                SystemMessage(content=AGENT_B_SYSTEM),
+                HumanMessage(content=(
+                    f"Research the qualitative outlook for {state['ticker']} using "
+                    f"your tools. No quantitative brief reached you; say so in the "
+                    f"report rather than inventing figures."
+                )),
+            ], "b_iterations": count}
         if count >= max_iterations:
             return {"b_messages": [AIMessage(content="Research budget reached; proceeding.")],
                     "b_iterations": count + 1}
         response = invoke_with_recovery(model_b, state["b_messages"], label="AgentB")
         return {"b_messages": [response], "b_iterations": count + 1}
 
-    def route_b(state: State) -> Literal["tools_b", "critique"]:
+    def route_b(state) -> Literal["tools_b", "critique"]:
         last = state["b_messages"][-1]
         if getattr(last, "tool_calls", None) and state.get("b_iterations", 0) <= max_iterations:
             return "tools_b"
         return "critique"
 
     # -- Critique loop ------------------------------------------------------
-    def critique_node(state: State) -> dict:
+    def critique_node(state) -> dict:
         """Agent B decides whether to send ONE clarification back to Agent A."""
         if state.get("critique_rounds", 0) >= MAX_CRITIQUE_ROUNDS:
             return {"clarification": None}
@@ -802,10 +864,10 @@ def build_multi_agent(
         return {"clarification": request, "forced_critique": forced,
                 "critique_rounds": state.get("critique_rounds", 0) + 1}
 
-    def route_critique(state: State) -> Literal["clarify_a", "final_report"]:
+    def route_critique(state) -> Literal["clarify_a", "final_report"]:
         return "clarify_a" if state.get("clarification") else "final_report"
 
-    def clarify_a_node(state: State) -> dict:
+    def clarify_a_node(state) -> dict:
         """Agent A answers. It may call its tools again to do so."""
         request = state["clarification"]
         print("\n── CRITIQUE · Agent A responding ──")
@@ -840,7 +902,7 @@ def build_multi_agent(
         ))
         return {"clarification_answer": answer, "b_messages": [incorporate]}
 
-    def final_report_node(state: State) -> dict:
+    def final_report_node(state) -> dict:
         print("\n── FINAL REPORT · Agent B ──")
         brief = state.get("quant_brief")
         instruction = HumanMessage(content=(

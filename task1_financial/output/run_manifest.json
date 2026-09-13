@@ -1,0 +1,73 @@
+{
+  "ticker": "NVDA",
+  "lookback_years": 2,
+  "as_of": "2026-09-11",
+  "sessions_analysed": 521,
+  "headlines_classified": 25,
+  "recommendation": "Hold",
+  "signal_is_fallback": false,
+  "validation_failures": {},
+  "models": {
+    "tier": "reasoning",
+    "providers": [
+      {
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b",
+        "base_url": "https://api.groq.com/openai/v1"
+      },
+      {
+        "provider": "openrouter",
+        "model": "aion-labs/aion-2.0",
+        "base_url": "https://openrouter.ai/api/v1"
+      }
+    ]
+  },
+  "prompts": [
+    {
+      "name": "headline_sentiment",
+      "version": "v3"
+    },
+    {
+      "name": "trading_signal",
+      "version": "v4"
+    }
+  ],
+  "llm_calls": 5,
+  "llm_call_detail": [
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "ok": true,
+      "duration_s": 2.602,
+      "attempt": 1
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "ok": true,
+      "duration_s": 2.622,
+      "attempt": 1
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "ok": true,
+      "duration_s": 3.31,
+      "attempt": 1
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "ok": true,
+      "duration_s": 0.934,
+      "attempt": 1
+    },
+    {
+      "provider": "groq",
+      "model": "openai/gpt-oss-120b",
+      "ok": true,
+      "duration_s": 2.819,
+      "attempt": 1
+    }
+  ]
+}

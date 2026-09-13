@@ -106,6 +106,13 @@ class Provider:
     # Ranked preference per tier. The first ID the provider actually serves wins.
     preferences: dict[Tier, tuple[str, ...]]
     extra_headers: dict[str, str] = field(default_factory=dict)
+    # When set, model discovery may only ever select an ID ending in this
+    # suffix. OpenRouter serves 445 models, of which 19 are free; the previous
+    # "take any served model" fallback sorted alphabetically and landed on
+    # aion-labs/aion-2.0, a PAID model. The assessment mandates free-tier tools
+    # and no personal expenditure, so the constraint belongs in code, not in a
+    # comment asking the reader to be careful.
+    free_only_suffix: str | None = None
 
 
 # Preference lists are RANKED HINTS, not assertions. Anything unavailable at
@@ -139,29 +146,41 @@ PROVIDERS: tuple[Provider, ...] = (
         name="openrouter",
         base_url="https://openrouter.ai/api/v1",
         api_key_env="OPENROUTER_API_KEY",
+        # Verified against /models: free AND advertising "tools" in
+        # supported_parameters. Tool calling is non-negotiable for Task 3.
         preferences={
             Tier.REASONING: (
-                "meta-llama/llama-3.3-70b-instruct:free",
-                "deepseek/deepseek-chat-v3-0324:free",
-                "qwen/qwen-2.5-72b-instruct:free",
-                "mistralai/mistral-small-3.2-24b-instruct:free",
+                "nvidia/nemotron-3-ultra-550b-a55b:free",
+                "nvidia/nemotron-3-super-120b-a12b:free",
+                "thinkingmachines/inkling:free",
+                "google/gemma-4-31b-it:free",
             ),
             Tier.FAST: (
-                "mistralai/mistral-small-3.2-24b-instruct:free",
-                "meta-llama/llama-3.3-70b-instruct:free",
+                "nvidia/nemotron-3.5-lightning:free",
+                "google/gemma-4-26b-a4b-it:free",
+                "nvidia/nemotron-3-super-120b-a12b:free",
             ),
             Tier.TEACHER: (
-                "deepseek/deepseek-chat-v3-0324:free",
-                "meta-llama/llama-3.3-70b-instruct:free",
+                "nvidia/nemotron-3-ultra-550b-a55b:free",
+                "nvidia/nemotron-3-super-120b-a12b:free",
+                "thinkingmachines/inkling:free",
             ),
         },
+        free_only_suffix=":free",
         # OpenRouter asks for attribution headers; harmless if omitted.
         extra_headers={"HTTP-Referer": "https://github.com/", "X-Title": "CDAZZDEV-MLE"},
     ),
 )
 
 # Errors worth retrying. 429 = rate limit, 5xx = transient upstream fault.
-RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504}
+# 413 belongs here too, and its absence was a real bug: Groq returns HTTP 413
+# (not 429) when a request exceeds the free tier's tokens-per-minute budget --
+# "Request too large ... on tokens per minute (TPM): Limit 8000, Requested 8990".
+# Because 413 was not retryable, that error escaped instead of failing over to
+# OpenRouter, and it killed the Task 3 agent mid-run. Retrying the same request
+# on the same provider will not help, but the failover to the next provider is
+# exactly the intended behaviour.
+RETRYABLE_STATUS = {408, 409, 413, 429, 500, 502, 503, 504}
 MAX_ATTEMPTS_PER_PROVIDER = 4
 
 
@@ -271,12 +290,17 @@ class LLMClient:
             logger.warning("Model discovery failed for %s (%s); using static list.", provider.name, exc)
             return prefs[0] if prefs else None
 
+        # Never let discovery escape the provider's cost constraint.
+        if provider.free_only_suffix:
+            served = {m for m in served if m.endswith(provider.free_only_suffix)}
+
         for candidate in prefs:
             if candidate in served:
                 return candidate
 
         # Nothing preferred is served. Rather than fail, take any served model
-        # whose name suggests it is an instruct-tuned chat model.
+        # whose name suggests it is an instruct-tuned chat model. `served` is
+        # already cost-filtered above, so this cannot select a paid model.
         fallback = sorted(m for m in served if "whisper" not in m and "guard" not in m)
         if fallback:
             logger.warning(
