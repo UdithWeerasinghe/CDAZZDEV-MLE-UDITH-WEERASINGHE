@@ -266,6 +266,7 @@ PROVIDERS: tuple[Provider, ...] = (
 # on the same provider will not help, but the failover to the next provider is
 # exactly the intended behaviour.
 RETRYABLE_STATUS = {408, 409, 413, 429, 500, 502, 503, 504}
+MAX_MODELS_PER_PROVIDER = 4   # Each model is its own daily quota bucket.
 MAX_ATTEMPTS_PER_PROVIDER = 4
 
 
@@ -335,12 +336,13 @@ class LLMClient:
                 logger.info("Provider %s skipped: %s not set.", name, provider.api_key_env)
                 continue
             client = self._build_client(provider, key)
-            model = self._resolve_model(provider, client)
-            if model is None:
+            models = self._resolve_models(provider, client)
+            if not models:
                 logger.warning("Provider %s reachable but no preferred model served.", name)
                 continue
-            self._active.append((provider, client, model))
-            logger.info("Provider %s ready with model %s.", name, model)
+            for model in models:
+                self._active.append((provider, client, model))
+            logger.info("Provider %s ready with model(s): %s.", name, ", ".join(models))
 
         if not self._active:
             raise AllProvidersFailedError(
@@ -362,7 +364,23 @@ class LLMClient:
         )
 
     def _resolve_model(self, provider: Provider, client: Any) -> str | None:
-        """Pick the highest-ranked preferred model this provider actually serves.
+        """Backwards-compatible single-model resolver."""
+        models = self._resolve_models(provider, client)
+        return models[0] if models else None
+
+    def _resolve_models(self, provider: Provider, client: Any) -> list[str]:
+        """Rank every preferred model this provider actually serves.
+
+        Returns a LIST, not one model, because on these free tiers the quota is
+        per model per day, not per provider. Gemini refuses with:
+
+            Quota exceeded for metric: generate_content_free_tier_requests,
+            limit: 500, model: gemini-3.5-flash-lite
+
+        and `gemini-3.1-flash-lite` still has its own untouched 500. Resolving a
+        single model per provider threw that away: one model hitting its ceiling
+        retired the whole provider. Listing four roughly quadruples the daily
+        budget for nothing but a longer failover chain.
 
         Falls back to the raw preference list if /models is unreachable, so a
         listing outage degrades to the old hardcoded behaviour rather than a
@@ -373,7 +391,7 @@ class LLMClient:
             served = {m.id for m in client.models.list().data}
         except Exception as exc:
             logger.warning("Model discovery failed for %s (%s); using static list.", provider.name, exc)
-            return prefs[0] if prefs else None
+            return list(prefs[:MAX_MODELS_PER_PROVIDER])
 
         # Gemini's OpenAI-compatible /models returns fully-qualified ids
         # ("models/gemini-2.5-flash"). Match on the bare name so one preference
@@ -384,9 +402,9 @@ class LLMClient:
         if provider.free_only_suffix:
             served = {m for m in served if m.endswith(provider.free_only_suffix)}
 
-        for candidate in prefs:
-            if candidate in served:
-                return candidate
+        chosen = [c for c in prefs if c in served][:MAX_MODELS_PER_PROVIDER]
+        if chosen:
+            return chosen
 
         # Nothing preferred is served. Rather than fail, take any served model
         # whose name suggests it is an instruct-tuned chat model. `served` is
@@ -397,8 +415,8 @@ class LLMClient:
                 "None of the preferred %s models are served by %s; falling back to %s.",
                 self.tier.value, provider.name, fallback[0],
             )
-            return fallback[0]
-        return None
+            return fallback[:1]
+        return []
 
     # -- public API ----------------------------------------------------------
     @property
