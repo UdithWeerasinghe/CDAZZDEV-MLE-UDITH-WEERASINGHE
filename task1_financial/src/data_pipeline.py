@@ -29,7 +29,7 @@ DESIGN DECISIONS WORTH DEFENDING
   handled "without raising unhandled exceptions". Failures are logged with
   context and degrade the result rather than aborting the pipeline.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Build a yfinance OHLCV + news
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Build a yfinance OHLCV + news
 # ingestion module with a multi-source news fallback chain and a null-safe
 # summary dictionary', Date: 2026-09-10
 """

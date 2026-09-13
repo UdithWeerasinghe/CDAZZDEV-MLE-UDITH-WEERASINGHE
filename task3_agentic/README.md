@@ -1,6 +1,6 @@
 # Task 3 — Multi-Agent Financial Research System
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/YOUR_USERNAME/CDAZZDEV-MLE-Udith/blob/main/task3_agentic/notebooks/task3_agentic_system.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/UdithWeerasinghe/CDAZZDEV-MLE-UDITH-WEERASINGHE/blob/main/task3_agentic/notebooks/task3_agentic_system.ipynb)
 
 **Notebook:** [`notebooks/task3_agentic_system.ipynb`](notebooks/task3_agentic_system.ipynb) · CPU only, ~15 min · **framework: LangGraph**
 

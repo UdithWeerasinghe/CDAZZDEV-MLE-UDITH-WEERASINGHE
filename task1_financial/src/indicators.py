@@ -35,7 +35,7 @@ All functions return values aligned to the input index with NaN during the
 warm-up period. Warm-up NaNs are NEVER forward-filled: a fabricated 200-day SMA
 on day 3 is a silent lie that would propagate into the trading signal.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Implement SMA, EMA, Wilder RSI,
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Implement SMA, EMA, Wilder RSI,
 # MACD and Bollinger Bands from first principles in pandas with correct
 # smoothing and ddof semantics', Date: 2026-09-10
 """

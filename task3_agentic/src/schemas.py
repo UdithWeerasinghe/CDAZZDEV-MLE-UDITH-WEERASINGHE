@@ -27,7 +27,7 @@ Two properties make it a real contract rather than decoration:
 The request names a specific field and a specific question, so the loop cannot
 degenerate into "please tell me more".
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Define Pydantic handoff schemas
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Define Pydantic handoff schemas
 # for a quant analyst agent and a research writer agent, including a
 # clarification request/response pair', Date: 2026-09-10
 """

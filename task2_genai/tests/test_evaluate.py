@@ -9,7 +9,7 @@ a comment.
 
 Run:  python task2_genai/tests/test_evaluate.py
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Write tests proving the
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Write tests proving the
 # evaluation suite separates base-style from fine-tuned-style outputs and
 # quantifying ROUGE-L insensitivity', Date: 2026-09-10
 """

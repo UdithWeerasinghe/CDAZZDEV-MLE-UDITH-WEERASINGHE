@@ -30,7 +30,7 @@ TOKEN DISCIPLINE
 the frame would blow the context window and drown the signal. The agent needs
 the current state of the indicators, not 500 rows of history.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Implement five LangChain tools
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Implement five LangChain tools
 # for a financial research agent that return structured ok/data/error envelopes
 # with actionable suggestions on failure', Date: 2026-09-10
 """

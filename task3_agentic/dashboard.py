@@ -15,7 +15,7 @@ actually specifies. This reads the required artefact directly, so what you see
 on screen is exactly the file that was committed - no divergence between the
 deliverable and the dashboard over it.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Build a Streamlit dashboard
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Build a Streamlit dashboard
 # reading agent_trace.jsonl showing a call timeline, per-tool latency and
 # failure highlighting', Date: 2026-09-10
 """

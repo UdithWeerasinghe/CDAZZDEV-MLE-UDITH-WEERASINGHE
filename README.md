@@ -1,4 +1,4 @@
-# CDAZZDEV-MLE-Udith
+# CDAZZDEV-MLE-UDITH-WEERASINGHE
 
 Submission for the **CDAZZDEV Senior Machine Learning Engineer** technical assessment.
 All three tasks attempted.
@@ -130,8 +130,8 @@ so adding a key is the whole of the configuration.
 Full walkthrough in [`SETUP.md`](SETUP.md). Short version:
 
 ```powershell
-git clone https://github.com/YOUR_USERNAME/CDAZZDEV-MLE-Udith.git
-cd CDAZZDEV-MLE-Udith
+git clone https://github.com/UdithWeerasinghe/CDAZZDEV-MLE-UDITH-WEERASINGHE.git
+cd CDAZZDEV-MLE-UDITH-WEERASINGHE
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt

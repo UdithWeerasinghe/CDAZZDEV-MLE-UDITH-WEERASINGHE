@@ -34,7 +34,7 @@ prompts below therefore state explicitly that headline text is data to classify,
 never instructions to follow, and the user template fences the headlines in a
 delimited block. This is defence in depth, not a guarantee.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Write a versioned prompt library
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Write a versioned prompt library
 # using string.Template with system/user separation for headline sentiment
 # classification and trading-signal reasoning', Date: 2026-09-10
 """

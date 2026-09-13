@@ -43,7 +43,7 @@ Settings → Apps → Advanced app settings → App execution aliases → turn *
 The brief requires a **public** repo named `CDAZZDEV-MLE-[YourName]`.
 
 1. github.com → **New repository**
-2. Name: `CDAZZDEV-MLE-Udith` (substitute your own name)
+2. Name: `CDAZZDEV-MLE-UDITH-WEERASINGHE`
 3. **Public** — a private repo at review time is treated as a missing submission
 4. Do **not** initialise with a README; you already have one
 5. Create
@@ -54,15 +54,15 @@ The brief requires a **public** repo named `CDAZZDEV-MLE-[YourName]`.
 
 ```powershell
 cd $HOME\Documents
-git clone https://github.com/YOUR_USERNAME/CDAZZDEV-MLE-Udith.git
-cd CDAZZDEV-MLE-Udith
+git clone https://github.com/UdithWeerasinghe/CDAZZDEV-MLE-UDITH-WEERASINGHE.git
+cd CDAZZDEV-MLE-UDITH-WEERASINGHE
 ```
 
 If you were given this as a folder rather than a clone, copy its contents in, then:
 
 ```powershell
 git init
-git remote add origin https://github.com/YOUR_USERNAME/CDAZZDEV-MLE-Udith.git
+git remote add origin https://github.com/UdithWeerasinghe/CDAZZDEV-MLE-UDITH-WEERASINGHE.git
 ```
 
 Create and activate a virtual environment:
@@ -200,20 +200,21 @@ The toggle is easy to miss and the failure looks like a missing key.
 
 ### Point the clone cell at your repo
 
-In each notebook's setup cell, replace `YOUR_USERNAME`:
+In each notebook's setup cell, replace `UdithWeerasinghe`:
 
 ```python
-!git clone -q https://github.com/YOUR_USERNAME/CDAZZDEV-MLE-Udith.git
+!git clone -q https://github.com/UdithWeerasinghe/CDAZZDEV-MLE-UDITH-WEERASINGHE.git
 ```
 
-In Task 2, also set `HF_REPO = "YOUR_HF_USERNAME/mistral-7b-credit-clause-extraction"`.
+In Task 2, confirm `HF_USERNAME` in the push cell matches your Hugging Face account
+(`UdithWeerasingheHF`), which is not necessarily your GitHub handle.
 
 ### Add the Colab badge
 
 Put this at the top of each task's README (already present — just fix the username):
 
 ```markdown
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/YOUR_USERNAME/CDAZZDEV-MLE-Udith/blob/main/task1_financial/notebooks/task1_equity_research.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/UdithWeerasinghe/CDAZZDEV-MLE-UDITH-WEERASINGHE/blob/main/task1_financial/notebooks/task1_equity_research.ipynb)
 ```
 
 ### Run order
@@ -279,7 +280,7 @@ Run through this against the brief's own list:
 
 ```powershell
 # Repo is public — check in an incognito window while logged out
-start https://github.com/YOUR_USERNAME/CDAZZDEV-MLE-Udith
+start https://github.com/UdithWeerasinghe/CDAZZDEV-MLE-UDITH-WEERASINGHE
 
 # No credentials anywhere in the tree
 git grep -nE "(gsk_|sk-or-|hf_[A-Za-z0-9]{20,})" -- . ; if ($LASTEXITCODE -eq 1) { "No key patterns found" }

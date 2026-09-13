@@ -9,7 +9,7 @@ separates them.
 
 Run:  python task2_genai/tests/test_diversity.py
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Write a test proving the
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Write a test proving the
 # diversity analyser flags a mode-collapsed dataset and passes a varied one',
 # Date: 2026-09-10
 """

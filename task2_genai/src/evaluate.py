@@ -39,7 +39,7 @@ requires - it complements it. The manual labels catch semantic errors the
 automated check cannot see (a correct-looking obligation that misreads the
 clause); the automated check covers all 12 test cases rather than a sample.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Build an evaluation suite
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Build an evaluation suite
 # comparing base and fine-tuned models on ROUGE-L, BERTScore, an LLM judge,
 # per-field accuracy and automated grounding checks', Date: 2026-09-10
 """

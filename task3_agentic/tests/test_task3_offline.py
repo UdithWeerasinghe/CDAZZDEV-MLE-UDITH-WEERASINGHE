@@ -8,7 +8,7 @@ exercised in the notebook against live inference.
 
 Run:  python task3_agentic/tests/test_task3_offline.py
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Write offline tests for the
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Write offline tests for the
 # Task 3 handoff schema, tracer, cache and tool restriction', Date: 2026-09-10
 """
 

@@ -35,7 +35,7 @@ USAGE
     text = llm.chat([{"role": "user", "content": "Hello"}])
     obj  = llm.chat_json([...], schema_hint='{"sentiment": "positive"}')
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Build a provider-agnostic
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Build a provider-agnostic
 # OpenAI-compatible LLM client with Groq primary and OpenRouter fallback,
 # runtime model discovery, and exponential backoff', Date: 2026-09-10
 """

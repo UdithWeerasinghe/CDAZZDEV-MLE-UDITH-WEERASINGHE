@@ -34,7 +34,7 @@ Retrieval returns the k most similar clause/extraction pairs from the TRAINING
 split only. Retrieving from validation or test would leak the answer into the
 prediction and invalidate every number in Task 2C.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Implement a perplexity-gated
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Implement a perplexity-gated
 # ChromaDB RAG fallback for a fine-tuned extraction model with a calibrated
 # threshold', Date: 2026-09-10
 """

@@ -33,7 +33,7 @@ Every failure at every stage is appended to `validation_failures.jsonl`. The
 brief asks for validation failures to be "caught, logged, and handled
 gracefully"; the log file is the evidence that they were.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Write the Task 1B orchestration
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Write the Task 1B orchestration
 # with batched headline classification, item-level reconciliation, a bounded
 # Pydantic repair loop and a rules-based fallback signal', Date: 2026-09-10
 """

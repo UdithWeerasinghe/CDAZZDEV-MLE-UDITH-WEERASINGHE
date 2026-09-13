@@ -29,7 +29,7 @@ DESIGN NOTES
   concurrent or interleaved runs can be separated after the fact and the exact
   ordering of a run is recoverable.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Build a JSONL agent tracer
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Build a JSONL agent tracer
 # recording tool name, inputs, truncated output and duration per call, with
 # a context manager API', Date: 2026-09-10
 """

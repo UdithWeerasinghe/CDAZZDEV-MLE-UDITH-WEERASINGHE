@@ -8,7 +8,7 @@ false confidence.
 
 Run:  python task1_financial/tests/test_schemas.py
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Write tests proving the
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Write tests proving the
 # TradingSignal validator rejects value regurgitation and accepts genuine
 # synthesis', Date: 2026-09-10
 """

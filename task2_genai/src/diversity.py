@@ -24,7 +24,7 @@ minor variation of one scenario:
 Every metric is returned as data and rendered as a plot, so the notebook shows
 both the figure and the number behind it.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Write a dataset diversity
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Write a dataset diversity
 # analyser reporting length distribution, keyword frequency, pairwise TF-IDF
 # similarity and per-axis entropy', Date: 2026-09-10
 """

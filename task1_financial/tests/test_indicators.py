@@ -10,7 +10,7 @@ textbook formula agreeing to 1e-9 is real evidence.
 Run:  python -m pytest task1_financial/tests/test_indicators.py -v
       python task1_financial/tests/test_indicators.py        (no pytest needed)
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Write independent pure-Python
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Write independent pure-Python
 # reference implementations of Wilder RSI, EMA/MACD and Bollinger Bands and
 # assert the pandas implementations match', Date: 2026-09-10
 """

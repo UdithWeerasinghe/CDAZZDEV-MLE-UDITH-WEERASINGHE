@@ -16,7 +16,7 @@ sentiment summary with the top three headlines, the LLM recommendation with its
 reasoning, and a mandatory risk disclaimer. The disclaimer is rendered by the
 template rather than passed in, so it cannot be accidentally omitted.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Build a self-contained HTML
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Build a self-contained HTML
 # equity research brief with an embedded base64 matplotlib chart and a
 # mandatory risk disclaimer', Date: 2026-09-10
 """

@@ -1,4 +1,4 @@
-# CDAZZDEV-MLE-Udith — all free / open source.
+# CDAZZDEV-MLE-UDITH-WEERASINGHE — all free / open source.
 # Tasks 1 and 3 run on CPU. Task 2B needs a GPU (use Colab free T4).
 
 # --- Core (all tasks) ---

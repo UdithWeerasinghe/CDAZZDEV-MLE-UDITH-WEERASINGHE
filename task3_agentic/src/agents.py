@@ -36,7 +36,7 @@ Task 3B (two agents with a critique loop):
                                                   │yes
                                           clarify_a → incorporate ┘
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Build a LangGraph single-agent
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Build a LangGraph single-agent
 # research graph and a two-agent graph with structurally enforced tool
 # restriction and a critique loop', Date: 2026-09-10
 """

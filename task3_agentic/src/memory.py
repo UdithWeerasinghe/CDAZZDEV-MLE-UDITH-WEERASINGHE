@@ -28,7 +28,7 @@ DESIGN NOTES
   every tool call, which is the observable behaviour the criterion asks for and
   is visible in the trace as an empty tool list.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Implement a persistent JSON
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Implement a persistent JSON
 # research-brief cache keyed by ticker and date with staleness checks and
 # corruption tolerance', Date: 2026-09-10
 """

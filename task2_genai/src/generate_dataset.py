@@ -41,7 +41,7 @@ Mistral-7B-Instruct-v0.3. The brief lists using one model as both as a marks-
 losing error. The teacher's identity is recorded in the dataset manifest so the
 separation is auditable rather than asserted.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Build a stratified synthetic
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Build a stratified synthetic
 # dataset generator for credit clause extraction with TF-IDF near-duplicate
 # rejection and deliberate edge-case seeding', Date: 2026-09-10
 """

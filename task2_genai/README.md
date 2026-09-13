@@ -1,6 +1,6 @@
 # Task 2 — Domain-Specific Fine-Tuning Pipeline
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/YOUR_USERNAME/CDAZZDEV-MLE-Udith/blob/main/task2_genai/notebooks/task2_finetuning_pipeline.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/UdithWeerasinghe/CDAZZDEV-MLE-UDITH-WEERASINGHE/blob/main/task2_genai/notebooks/task2_finetuning_pipeline.ipynb)
 
 **Notebook:** [`notebooks/task2_finetuning_pipeline.ipynb`](notebooks/task2_finetuning_pipeline.ipynb) · **needs a T4 GPU** · ~90 min
 

@@ -17,7 +17,7 @@ and the recovery path rather than a clean happy path.
 
 Run:  python task1_financial/tests/test_end_to_end_offline.py
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Write an offline end-to-end test
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Write an offline end-to-end test
 # for the Task 1 pipeline using a stub LLM that fails validation on the first
 # attempt', Date: 2026-09-10
 """

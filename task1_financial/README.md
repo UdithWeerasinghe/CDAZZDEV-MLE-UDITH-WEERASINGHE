@@ -1,6 +1,6 @@
 # Task 1 — LLM-Powered Equity Research Assistant
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/YOUR_USERNAME/CDAZZDEV-MLE-Udith/blob/main/task1_financial/notebooks/task1_equity_research.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/UdithWeerasinghe/CDAZZDEV-MLE-UDITH-WEERASINGHE/blob/main/task1_financial/notebooks/task1_equity_research.ipynb)
 
 **Notebook:** [`notebooks/task1_equity_research.ipynb`](notebooks/task1_equity_research.ipynb) · CPU only, ~10 min · needs `GROQ_API_KEY` or `OPENROUTER_API_KEY`
 

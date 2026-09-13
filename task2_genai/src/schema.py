@@ -53,7 +53,7 @@ WHY THIS IS A GOOD FINE-TUNING TARGET
   * It is not a generic chatbot task, which the brief caps at 5/30.
 
 =============================================================================
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Design a credit-agreement clause
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Design a credit-agreement clause
 # extraction schema with a closed clause taxonomy and per-field validation for
 # a fine-tuning use case', Date: 2026-09-10
 """

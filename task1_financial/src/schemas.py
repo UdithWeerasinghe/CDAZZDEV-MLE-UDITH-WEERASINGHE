@@ -28,7 +28,7 @@ a genuinely good terse answer. That is the right direction to err for an
 analyst-facing tool, and the fallback path means a rejection degrades quality
 rather than breaking the pipeline.
 
-# AI-ASSISTED: Claude (claude-opus-5), Prompt: 'Design Pydantic schemas for
+# AI-ASSISTED: Claude (claude-sonnet-5), Prompt: 'Design Pydantic schemas for
 # per-headline sentiment and a trading signal, with a validator that rejects
 # justifications which merely restate indicator values', Date: 2026-09-10
 """
