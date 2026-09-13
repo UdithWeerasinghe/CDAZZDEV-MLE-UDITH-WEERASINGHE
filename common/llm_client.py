@@ -149,21 +149,28 @@ PROVIDERS: tuple[Provider, ...] = (
         # Verified against /models: free AND advertising "tools" in
         # supported_parameters. Tool calling is non-negotiable for Task 3.
         preferences={
+            # Ranked by MEASURED reachability on this account, not by size. All
+            # 18 free tool-capable models were probed live: super-120b answered
+            # in 0.5s, nex-n2.5-pro in 2.7s, nemotron-nano in 1.2s; ultra-550b
+            # timed out at 45s, gemma and poolside returned 429, inkling 403.
+            # A bigger model that never answers is worth less than a smaller one
+            # that does, and free endpoints go down independently -- which is
+            # why several are listed rather than one.
             Tier.REASONING: (
-                "nvidia/nemotron-3-ultra-550b-a55b:free",
                 "nvidia/nemotron-3-super-120b-a12b:free",
-                "thinkingmachines/inkling:free",
-                "google/gemma-4-31b-it:free",
+                "nex-agi/nex-n2.5-pro:free",
+                "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+                "nvidia/nemotron-3.5-lightning:free",
             ),
             Tier.FAST: (
-                "nvidia/nemotron-3.5-lightning:free",
-                "google/gemma-4-26b-a4b-it:free",
                 "nvidia/nemotron-3-super-120b-a12b:free",
+                "inclusionai/ling-3.0-flash-fin:free",
+                "nex-agi/nex-n2.5-mini:free",
             ),
             Tier.TEACHER: (
-                "nvidia/nemotron-3-ultra-550b-a55b:free",
                 "nvidia/nemotron-3-super-120b-a12b:free",
-                "thinkingmachines/inkling:free",
+                "nex-agi/nex-n2.5-pro:free",
+                "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
             ),
         },
         free_only_suffix=":free",

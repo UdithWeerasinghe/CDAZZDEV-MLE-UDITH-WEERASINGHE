@@ -82,8 +82,15 @@ logger = logging.getLogger(__name__)
 
 MAX_AGENT_ITERATIONS = 8      # Hard stop. An agent that will not finish must not run forever.
 MAX_STRUCTURED_ATTEMPTS = 3
-MAX_CRITIQUE_ROUNDS = 1       # The brief asks for one visible cycle.
-TOOL_MESSAGE_CHAR_BUDGET = 2000  # Per observation replayed to the model; see make_tool_node.
+MAX_CRITIQUE_ROUNDS = 1
+MAX_MODELS_PER_PROVIDER = 3   # Fallback links per provider; see build_chat_model.       # The brief asks for one visible cycle.
+TOOL_MESSAGE_CHAR_BUDGET = 1200   # Per observation replayed to the model; see make_tool_node.
+PROMPT_CHAR_BUDGET = 13000        # ~3.2k tokens of transcript; see _trim_to_budget.
+# Groq's 8,000 tokens/minute counts prompt + reserved output together, so these
+# two numbers are one budget: ~3.2k transcript + 2k output leaves clear headroom.
+# max_tokens was briefly cut to 1024 to buy TPM room, which was the wrong lever --
+# a ResearchReport does not fit in 1024 tokens, and the JSON came back truncated
+# mid-string. Trim the INPUT, never the room the answer needs.
 
 
 # ---------------------------------------------------------------------------
@@ -153,21 +160,76 @@ def make_tool_node(tools: list[Any], messages_key: str = "messages") -> Any:
     return custom_tool_node
 
 
+class FailoverChatModel:
+    """A chat model that moves to the next free provider when one refuses.
+
+    `LLMClient` already fails over between Groq and OpenRouter, but the LangGraph
+    agents do not use it - they need a LangChain chat model, so `build_chat_model`
+    returned a bare `ChatOpenAI` pointed at whichever provider answered first.
+    That single-provider model is what actually killed live runs:
+
+      * HTTP 413 - "Request too large ... on tokens per minute (TPM): Limit 8000"
+      * HTTP 429 - "Rate limit reached ... on tokens per day (TPD): Limit 200000"
+
+    Neither is recoverable by retrying the same provider; the second is not
+    recoverable for the rest of the day. The README claimed the client "backs off
+    and fails over", and for the agents that was simply not true.
+
+    `bind_tools` is why this is a wrapper and not a bare `.with_fallbacks()` call:
+    `RunnableWithFallbacks` has no `bind_tools`, so the tools must be bound to
+    each provider's model first and the fallback chain built from the bound
+    runnables.
+    """
+
+    def __init__(self, models: list[Any], names: list[str]) -> None:
+        if not models:
+            raise ValueError("FailoverChatModel needs at least one model")
+        self._models = models
+        self._names = names
+
+    @property
+    def model_name(self) -> str:
+        """Primary model id. Notebooks print this in their run manifest."""
+        return self._names[0]
+
+    @property
+    def providers(self) -> list[str]:
+        return list(self._names)
+
+    @staticmethod
+    def _chain(models: list[Any]) -> Any:
+        return models[0].with_fallbacks(models[1:]) if len(models) > 1 else models[0]
+
+    def bind_tools(self, tools: Any, **kwargs: Any) -> Any:
+        return self._chain([m.bind_tools(tools, **kwargs) for m in self._models])
+
+    def invoke(self, *args: Any, **kwargs: Any) -> Any:
+        return self._chain(self._models).invoke(*args, **kwargs)
+
+    def stream(self, *args: Any, **kwargs: Any) -> Any:
+        return self._chain(self._models).stream(*args, **kwargs)
+
+
 def build_chat_model(temperature: float = 0.1, max_tokens: int = 2048) -> Any:
-    """Build a LangChain chat model over whichever free provider is configured.
+    """Build a chat model spanning every free provider that has a key.
 
-    Groq and OpenRouter are both OpenAI-compatible, so a single `ChatOpenAI`
-    with a swapped `base_url` reaches either. The concrete model is resolved by
-    querying the provider's /models endpoint (see common/llm_client.py) rather
-    than hardcoded, because the ID the brief implies is already deprecated.
+    Groq and OpenRouter are both OpenAI-compatible, so one `ChatOpenAI` per
+    provider with a swapped `base_url` reaches either. Concrete model ids are
+    resolved by querying each provider's /models endpoint (see
+    common/llm_client.py) rather than hardcoded, because the ids the brief
+    implies are already deprecated.
 
-    Tool calling is a hard requirement here - Task 3 is meaningless without it -
-    so we prefer the reasoning tier, which is the ranked list of models known to
-    support it reliably.
+    Tool calling is a hard requirement - Task 3 is meaningless without it - so
+    the reasoning tier is preferred, being the ranked list of models known to
+    support it reliably. Providers are returned in order, wrapped so that a
+    refusal from one moves to the next rather than ending the run.
     """
     from langchain_openai import ChatOpenAI
 
     from common.llm_client import PROVIDERS, Tier, get_secret
+
+    models: list[Any] = []
+    names: list[str] = []
 
     for provider in PROVIDERS:
         api_key = get_secret(provider.api_key_env)
@@ -182,24 +244,44 @@ def build_chat_model(temperature: float = 0.1, max_tokens: int = 2048) -> Any:
             logger.warning("Could not list models for %s: %s", provider.name, exc)
             served = set()
 
-        preferences = provider.preferences[Tier.REASONING]
-        model_id = next((m for m in preferences if m in served), preferences[0])
+        # Honour the provider's cost constraint, exactly as LLMClient does.
+        if getattr(provider, "free_only_suffix", None):
+            served = {m for m in served if m.endswith(provider.free_only_suffix)}
 
-        logger.info("Chat model: %s via %s", model_id, provider.name)
-        return ChatOpenAI(
-            model=model_id,
-            api_key=api_key,
-            base_url=provider.base_url,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            timeout=90,
-            max_retries=3,
+        preferences = provider.preferences[Tier.REASONING]
+        # Several links per provider, not one. Free endpoints fail INDEPENDENTLY
+        # and transiently -- a 502 "Service temporarily overloaded" on the single
+        # OpenRouter model, arriving while Groq's daily quota was spent, emptied
+        # a two-link chain and ended the run. Extra links cost nothing unless
+        # they are needed.
+        chosen = [m for m in preferences if m in served][:MAX_MODELS_PER_PROVIDER]
+        if not chosen:
+            chosen = [sorted(served)[0]] if served else [preferences[0]]
+
+        for model_id in chosen:
+            logger.info("Chat model: %s via %s", model_id, provider.name)
+            models.append(ChatOpenAI(
+                model=model_id,
+                api_key=api_key,
+                base_url=provider.base_url,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                timeout=90,
+                # Low, deliberately: a TPM or TPD refusal will not clear by
+                # retrying the same provider, so spending attempts there only
+                # delays the failover that actually resolves it.
+                max_retries=1,
+                default_headers=provider.extra_headers or None,
+            ))
+            names.append(f"{model_id} ({provider.name})")
+
+    if not models:
+        raise RuntimeError(
+            "No provider configured. Set GROQ_API_KEY or OPENROUTER_API_KEY "
+            "in your environment or Colab Secrets."
         )
 
-    raise RuntimeError(
-        "No provider configured. Set GROQ_API_KEY or OPENROUTER_API_KEY "
-        "in your environment or Colab Secrets."
-    )
+    return FailoverChatModel(models, names)
 
 
 def is_tool_call_parse_error(exc: Exception) -> bool:
@@ -236,6 +318,49 @@ TOOL_CALL_REPAIR = (
 )
 
 
+def _trim_to_budget(messages: list[Any], budget: int = PROMPT_CHAR_BUDGET) -> list[Any]:
+    """Drop the oldest middle turns until the transcript fits `budget` characters.
+
+    Groq's free tier allows 8,000 tokens per MINUTE, and that ceiling counts the
+    whole re-sent transcript plus `max_tokens` of reserved output. An agent loop
+    grows its transcript monotonically, so a long run walks into HTTP 413
+    ("Request too large ... Requested 8022") no matter how well it is behaving.
+
+    The first message (the system prompt) and the most recent turns are what the
+    model actually needs: the system prompt defines the task, and recent turns
+    carry the observations it is reasoning about. Older tool observations are
+    already reflected in the reasoning that followed them, so they are the right
+    thing to shed. Whatever is dropped remains in agent_trace.jsonl.
+    """
+    if not messages:
+        return messages
+
+    def size(message: Any) -> int:
+        content = getattr(message, "content", "")
+        return len(content) if isinstance(content, str) else len(str(content))
+
+    total = sum(size(m) for m in messages)
+    if total <= budget:
+        return messages
+
+    head, tail = messages[:1], messages[1:]
+    kept: list[Any] = []
+    running = size(head[0])
+    # Walk backwards so the most recent turns survive.
+    for message in reversed(tail):
+        cost = size(message)
+        if running + cost > budget and kept:
+            break
+        kept.append(message)
+        running += cost
+    kept.reverse()
+
+    dropped = len(messages) - len(head) - len(kept)
+    if dropped:
+        logger.info("Trimmed %d older turn(s) to fit the prompt budget.", dropped)
+    return head + kept
+
+
 def invoke_with_recovery(
     model_with_tools: Any,
     messages: list[Any],
@@ -262,7 +387,7 @@ def invoke_with_recovery(
     """
     from langchain_core.messages import AIMessage, HumanMessage
 
-    working = list(messages)
+    working = _trim_to_budget(list(messages))
     last_error: Exception | None = None
 
     for attempt in range(1, max_attempts + 1):
@@ -321,7 +446,9 @@ def structured_call(
     from langchain_core.messages import AIMessage, HumanMessage
 
     schema = json.dumps(model_cls.model_json_schema(), indent=2)[:3500]
-    working = list(messages) + [
+    # The schema and the repair instruction are large; trim the transcript so the
+    # whole request still fits the provider's per-minute token ceiling.
+    working = _trim_to_budget(list(messages), PROMPT_CHAR_BUDGET - len(schema)) + [
         HumanMessage(content=(
             f"Return a single JSON object conforming to this schema. "
             f"No prose, no markdown fences.\n\n{schema}"
