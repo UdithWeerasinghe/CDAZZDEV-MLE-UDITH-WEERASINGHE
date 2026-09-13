@@ -1,0 +1,14 @@
+{
+  "python.defaultInterpreterPath": ".venv\\Scripts\\python.exe",
+  "python.analysis.extraPaths": [
+    "./common",
+    "./task1_financial/src",
+    "./task2_genai/src",
+    "./task3_agentic/src"
+  ],
+  "python.terminal.activateEnvironment": true,
+  "python.envFile": "${workspaceFolder}/.env",
+  "jupyter.notebookFileRoot": "${workspaceFolder}",
+  "files.eol": "\n",
+  "[python]": { "editor.defaultFormatter": "charliermarsh.ruff" }
+}

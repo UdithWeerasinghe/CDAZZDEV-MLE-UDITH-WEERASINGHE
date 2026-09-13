@@ -1,0 +1,39 @@
+# Credentials — never commit. Section 2.3: hardcoded keys disqualify a submission.
+.env
+.env.*
+!.env.example
+*.key
+*_token*
+secrets.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Model weights — far too large for git. Task 2B pushes these to the HF Hub instead.
+task2_genai/output/merged_model/
+task2_genai/output/checkpoints/
+task2_genai/output/lora_adapter/
+*.safetensors
+*.bin
+*.gguf
+
+# Vector store binaries (rebuildable from train.jsonl in seconds)
+task2_genai/data/chroma/
+
+# Generated outputs. NOTE: agent_trace.jsonl is NOT ignored — the brief requires
+# it to be committed, and task3_agentic/logs/.gitkeep preserves the directory.
+task1_financial/output/*.html
+task1_financial/output/*.md
+task3_agentic/cache/*.json
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

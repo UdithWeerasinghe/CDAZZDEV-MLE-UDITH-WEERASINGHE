@@ -1,0 +1,37 @@
+# CDAZZDEV-MLE-Udith — all free / open source.
+# Tasks 1 and 3 run on CPU. Task 2B needs a GPU (use Colab free T4).
+
+# --- Core (all tasks) ---
+pandas>=2.2
+numpy>=1.26
+requests>=2.32
+pydantic>=2.7
+openai>=1.40            # OpenAI-compatible client; used against Groq and OpenRouter
+python-dotenv>=1.0
+
+# --- Task 1: Financial AI ---
+yfinance>=0.2.40        # Minimum, not pinned: the news payload schema changes between
+                        # releases and data_pipeline handles both shapes
+matplotlib>=3.8
+jinja2>=3.1
+
+# --- Task 2: Generative AI (GPU) ---
+transformers>=4.44
+peft>=0.12
+trl>=0.9
+bitsandbytes>=0.43      # 4-bit NF4 quantisation; Linux/WSL or Colab (limited on Windows)
+accelerate>=0.33
+datasets>=2.20
+scikit-learn>=1.4       # TF/TF-IDF vectorisation for the duplicate guard
+chromadb>=0.5           # RAG fallback bonus
+bert-score>=0.3.13      # Optional; the LLM judge is the alternative additional metric
+huggingface-hub>=0.24
+
+# --- Task 3: Agentic Workflows ---
+langgraph>=0.2.28
+langchain-core>=0.3
+langchain-openai>=0.2
+ddgs>=6.0               # Successor to duckduckgo-search; tools.py imports either
+
+# --- Task 3 bonus ---
+streamlit>=1.36
