@@ -378,6 +378,34 @@ def _trim_to_budget(messages: list[Any], budget: int = PROMPT_CHAR_BUDGET) -> li
     return head + kept
 
 
+def message_text(message: Any) -> str:
+    """Return a message's text, whatever shape the provider used.
+
+    `ChatOpenAI` sets `content` to a plain string. `ChatGoogleGenerativeAI` sets
+    it to a LIST of content blocks, so `.strip()` raises AttributeError and
+    `str(...)` yields a Python repr -- which then fails to parse as the JSON a
+    structured call is trying to read. Both shapes reach this codebase now that
+    Gemini drives the agent loop, so every read of `.content` goes through here.
+    """
+    content = getattr(message, "content", message)
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str):
+                parts.append(block)
+            elif isinstance(block, dict):
+                # {"type": "text", "text": "..."} is the common shape; skip
+                # thinking/tool blocks, which are not the answer.
+                if block.get("type") in (None, "text") and isinstance(block.get("text"), str):
+                    parts.append(block["text"])
+        return "".join(parts)
+    return str(content)
+
+
 def invoke_with_recovery(
     model_with_tools: Any,
     messages: list[Any],
@@ -476,7 +504,7 @@ def structured_call(
         raw = ""
         try:
             response = chat_model.invoke(working)
-            raw = response.content if isinstance(response.content, str) else str(response.content)
+            raw = message_text(response)
 
             from common.llm_client import _loads_lenient
 
@@ -690,7 +718,7 @@ def run_single_agent(
             kind = type(message).__name__
             if kind == "AIMessage":
                 step += 1
-                text = (message.content or "").strip()
+                text = message_text(message).strip()
                 if text and verbose:
                     print(f"\n── Step {step} · REASONING ──\n{text[:600]}")
                 calls = getattr(message, "tool_calls", None) or []
@@ -699,7 +727,7 @@ def run_single_agent(
                         args = json.dumps(call.get("args", {}))[:120]
                         print(f"   DECIDED → call {call['name']}({args})")
             elif kind == "ToolMessage" and verbose:
-                content = str(message.content)
+                content = message_text(message)
                 print(f"   OBSERVED ← {message.name}: {content[:260]}"
                       f"{'…' if len(content) > 260 else ''}")
         seen = len(messages)
