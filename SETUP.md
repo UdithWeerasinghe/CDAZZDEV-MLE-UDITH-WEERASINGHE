@@ -140,7 +140,9 @@ does **not** appear.
 | Key | Where | Cost |
 |---|---|---|
 | `GROQ_API_KEY` | https://console.groq.com/keys | Free, no card |
+<!-- Fill in at least one. Three is strongly advised: see the quota note below. -->
 | `OPENROUTER_API_KEY` | https://openrouter.ai/keys | Free tier |
+| `GEMINI_API_KEY` | https://aistudio.google.com/apikey | Free, no card |
 | `HF_TOKEN` | https://huggingface.co/settings/tokens — **WRITE** scope | Free |
 
 To load `.env` in a local terminal session:
@@ -310,6 +312,8 @@ foreach ($f in "CITATIONS.md","REFLECTION.md","README.md","task3_agentic/logs/ag
 | `ModuleNotFoundError: indicators` | Running from the wrong directory | Run from the repository root, not from inside `src/` |
 | `.ps1 cannot be loaded` on activate | PowerShell execution policy | `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` |
 | `AllProvidersFailedError` | No key resolved | Check `.env` locally, or Secrets + notebook-access toggle in Colab |
+| Groq `429` on **tokens per day** | 200,000/day exhausted - roughly three full Task 3 runs | Rolling window; small amounts free every few minutes. Add `GEMINI_API_KEY` so the run continues instead of waiting |
+| OpenRouter `free-models-per-day` | 50 free requests/day exhausted | Resets at 00:00 UTC. Check `X-RateLimit-Reset` in the error for the exact epoch |
 | Groq `429` | Free-tier rate limit | Expected. The client backs off and fails over — add `OPENROUTER_API_KEY` so it has somewhere to go |
 | `FlashAttention only supports Ampere` | T4 is sm_75 | Already handled: the notebook uses `sdpa`. Don't change it |
 | `CUDA out of memory` in Task 2B | Colab gave you a smaller GPU, or state is left over | Runtime → Restart, then run 2B from the top. Do not raise batch size |

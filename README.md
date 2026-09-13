@@ -110,10 +110,18 @@ Task 2 needs Runtime → Change runtime type → **T4 GPU**; Tasks 1 and 3 do no
 |---|---|---|
 | `GROQ_API_KEY` | All three tasks (primary inference) | https://console.groq.com/keys |
 | `OPENROUTER_API_KEY` | Automatic fallback when Groq rate-limits | https://openrouter.ai/keys |
+| `GEMINI_API_KEY` | Third fallback. Free, no card, 1,500 requests/day | https://aistudio.google.com/apikey |
 | `HF_TOKEN` | Task 2B only, to push the merged model | https://huggingface.co/settings/tokens (WRITE scope) |
 
-At least one of Groq or OpenRouter is required. Both is better — Task 3's agent runs long
-enough to hit a free-tier limit, and the fallback is what keeps it alive.
+At least one key is required; **three is what actually gets you through a working day**.
+The free tiers are small and they are the binding constraint on this project, not the code:
+Groq allows **200,000 tokens per day**, OpenRouter **50 free-model requests per day**, and a
+single full Task 3 run costs roughly 40-60k tokens. Three debugging runs exhaust Groq.
+
+Gemini's free tier is the most generous of the no-credit-card options (1,500 requests/day,
+250k tokens/minute, function calling), which is why it is worth adding even though the brief
+only names the first two. Providers are tried in order and a provider with no key is skipped,
+so adding a key is the whole of the configuration.
 
 ### Local (Windows 11 + VS Code)
 

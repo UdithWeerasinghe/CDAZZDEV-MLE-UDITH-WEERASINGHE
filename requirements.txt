@@ -32,6 +32,10 @@ langgraph>=0.2.28
 langchain-core>=0.3
 langchain-openai>=0.2
 ddgs>=6.0               # Successor to duckduckgo-search; tools.py imports either
+langchain-google-genai>=2.0  # Gemini via its NATIVE API. The OpenAI-compatible
+                        # endpoint drops Gemini 3's thought_signature, which breaks
+                        # the agent tool loop on the second turn; the native client
+                        # carries it. See common/llm_client.py::Provider.agent_client.
 
 # --- Task 3 bonus ---
 streamlit>=1.36

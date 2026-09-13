@@ -113,11 +113,76 @@ class Provider:
     # and no personal expenditure, so the constraint belongs in code, not in a
     # comment asking the reader to be careful.
     free_only_suffix: str | None = None
+    # Which LangChain chat class an AGENT must use to reach this provider.
+    # "openai" for anything OpenAI-compatible; "google_genai" for Gemini.
+    #
+    # This field exists because of a real, measured asymmetry. Gemini 3 requires
+    # its own `thought_signature` to be echoed back inside any functionCall it is
+    # shown again. The OpenAI-compatible surface does not carry that field, so
+    # the first tool call succeeds and the replay that follows fails 400
+    # ("Function call is missing a thought_signature"). The native client does
+    # carry it, and the same two-turn exchange then completes.
+    #
+    # Single-turn work (Task 1, the Task 2 teacher, llm_sentiment) never replays
+    # a tool call, so LLMClient keeps using the OpenAI-compatible endpoint for
+    # every provider and needs no second code path.
+    agent_client: str = "openai"
 
 
 # Preference lists are RANKED HINTS, not assertions. Anything unavailable at
 # runtime is skipped silently, so the code survives model deprecation.
+# ORDER IS THE FAILOVER ORDER, and it is set by how much headroom each free tier
+# actually gives:
+#   gemini      1,500 requests/day, 250k tokens/min   <- most headroom, so first
+#   groq          200,000 tokens/day                  <- about 3 full Task 3 runs
+#   openrouter         50 requests/day                <- exhausts fastest
+# Groq led this list until its daily ceiling was reached mid-session, after which
+# every call spent an attempt earning a guaranteed 429 before failing over. Lead
+# with the provider that can actually serve the run.
 PROVIDERS: tuple[Provider, ...] = (
+    # Google AI Studio. Added after Groq's 200k tokens/day and OpenRouter's
+    # 50 free requests/day were both exhausted in one working session, which
+    # stopped the agent outright. Gemini's free tier is the most generous of the
+    # no-credit-card options (1,500 requests/day, 250k tokens/minute), supports
+    # function calling, and exposes an OpenAI-compatible surface - so it drops in
+    # here with nothing but a base_url and a key.
+    #
+    # Cerebras was considered and rejected: its own docs now require a verified
+    # payment method before the API activates, and the brief requires that no
+    # part of this assessment cost the candidate money.
+    Provider(
+        name="gemini",
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        api_key_env="GEMINI_API_KEY",
+        # Verified by replaying a real agent turn (model emits a tool call, we
+        # send the transcript back with the result): every gemini-3.x flash
+        # model answered 400 over the OpenAI-compatible endpoint, and completed
+        # in 3.6-5.2s over the native one.
+        agent_client="google_genai",
+        # Probed live against this key with a real tool-calling request. Being
+        # LISTED is not the same as being USABLE: /models still returns
+        # gemini-2.5-flash, but calling it answers 404 "no longer available to
+        # new users", and the pro tier answers 429 on the free plan. Only ids
+        # that actually returned a tool call are listed here.
+        preferences={
+            Tier.REASONING: (
+                "gemini-3.6-flash",         # 6.5s, newest general model
+                "gemini-3.5-flash",         # 14.5s
+                "gemini-3-flash-preview",   # 1.4s
+                "gemini-3.5-flash-lite",    # 2.5s
+            ),
+            Tier.FAST: (
+                "gemini-3.1-flash-lite",    # 1.0s, fastest that accepted tools
+                "gemini-3.5-flash-lite",
+                "gemini-3-flash-preview",
+            ),
+            Tier.TEACHER: (
+                "gemini-3.6-flash",
+                "gemini-3.5-flash",
+                "gemini-3-flash-preview",
+            ),
+        },
+    ),
     Provider(
         name="groq",
         base_url="https://api.groq.com/openai/v1",
@@ -296,6 +361,11 @@ class LLMClient:
         except Exception as exc:
             logger.warning("Model discovery failed for %s (%s); using static list.", provider.name, exc)
             return prefs[0] if prefs else None
+
+        # Gemini's OpenAI-compatible /models returns fully-qualified ids
+        # ("models/gemini-2.5-flash"). Match on the bare name so one preference
+        # list works across providers.
+        served = {m.split("/", 1)[1] if m.startswith("models/") else m for m in served}
 
         # Never let discovery escape the provider's cost constraint.
         if provider.free_only_suffix:

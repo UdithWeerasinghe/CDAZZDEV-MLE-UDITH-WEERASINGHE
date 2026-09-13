@@ -235,6 +235,7 @@ def build_chat_model(temperature: float = 0.1, max_tokens: int = 2048) -> Any:
         api_key = get_secret(provider.api_key_env)
         if not api_key:
             continue
+
         try:
             from openai import OpenAI
 
@@ -244,7 +245,9 @@ def build_chat_model(temperature: float = 0.1, max_tokens: int = 2048) -> Any:
             logger.warning("Could not list models for %s: %s", provider.name, exc)
             served = set()
 
-        # Honour the provider's cost constraint, exactly as LLMClient does.
+        # Match LLMClient: normalise "models/x" -> "x" (Gemini), then honour the
+        # provider's cost constraint.
+        served = {m.split("/", 1)[1] if m.startswith("models/") else m for m in served}
         if getattr(provider, "free_only_suffix", None):
             served = {m for m in served if m.endswith(provider.free_only_suffix)}
 
@@ -260,19 +263,33 @@ def build_chat_model(temperature: float = 0.1, max_tokens: int = 2048) -> Any:
 
         for model_id in chosen:
             logger.info("Chat model: %s via %s", model_id, provider.name)
-            models.append(ChatOpenAI(
-                model=model_id,
-                api_key=api_key,
-                base_url=provider.base_url,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                timeout=90,
-                # Low, deliberately: a TPM or TPD refusal will not clear by
-                # retrying the same provider, so spending attempts there only
-                # delays the failover that actually resolves it.
-                max_retries=1,
-                default_headers=provider.extra_headers or None,
-            ))
+            if getattr(provider, "agent_client", "openai") == "google_genai":
+                # Native client: the OpenAI-compatible surface drops Gemini 3's
+                # thought_signature and the tool loop dies on the second turn.
+                from langchain_google_genai import ChatGoogleGenerativeAI
+
+                models.append(ChatGoogleGenerativeAI(
+                    model=model_id,
+                    google_api_key=api_key,
+                    temperature=temperature,
+                    max_output_tokens=max_tokens,
+                    timeout=90,
+                    max_retries=1,
+                ))
+            else:
+                models.append(ChatOpenAI(
+                    model=model_id,
+                    api_key=api_key,
+                    base_url=provider.base_url,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    timeout=90,
+                    # Low, deliberately: a TPM or TPD refusal will not clear by
+                    # retrying the same provider, so spending attempts there only
+                    # delays the failover that actually resolves it.
+                    max_retries=1,
+                    default_headers=provider.extra_headers or None,
+                ))
             names.append(f"{model_id} ({provider.name})")
 
     if not models:

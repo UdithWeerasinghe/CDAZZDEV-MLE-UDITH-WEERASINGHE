@@ -4,12 +4,19 @@
   "as_of": "2026-09-11",
   "sessions_analysed": 521,
   "headlines_classified": 25,
-  "recommendation": "Hold",
-  "signal_is_fallback": false,
-  "validation_failures": {},
+  "recommendation": "Buy",
+  "signal_is_fallback": true,
+  "validation_failures": {
+    "trading_signal": 3
+  },
   "models": {
     "tier": "reasoning",
     "providers": [
+      {
+        "provider": "gemini",
+        "model": "gemini-3.6-flash",
+        "base_url": "https://generativelanguage.googleapis.com/v1beta/openai/"
+      },
       {
         "provider": "groq",
         "model": "openai/gpt-oss-120b",
@@ -17,7 +24,7 @@
       },
       {
         "provider": "openrouter",
-        "model": "aion-labs/aion-2.0",
+        "model": "nvidia/nemotron-3-super-120b-a12b:free",
         "base_url": "https://openrouter.ai/api/v1"
       }
     ]
@@ -32,41 +39,132 @@
       "version": "v4"
     }
   ],
-  "llm_calls": 5,
+  "llm_calls": 18,
   "llm_call_detail": [
     {
-      "provider": "groq",
-      "model": "openai/gpt-oss-120b",
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
       "ok": true,
-      "duration_s": 2.602,
+      "duration_s": 9.199,
       "attempt": 1
     },
     {
-      "provider": "groq",
-      "model": "openai/gpt-oss-120b",
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
       "ok": true,
-      "duration_s": 2.622,
+      "duration_s": 6.688,
       "attempt": 1
     },
     {
-      "provider": "groq",
-      "model": "openai/gpt-oss-120b",
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
       "ok": true,
-      "duration_s": 3.31,
+      "duration_s": 8.714,
       "attempt": 1
     },
     {
-      "provider": "groq",
-      "model": "openai/gpt-oss-120b",
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
       "ok": true,
-      "duration_s": 0.934,
+      "duration_s": 9.983,
       "attempt": 1
     },
     {
-      "provider": "groq",
-      "model": "openai/gpt-oss-120b",
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
       "ok": true,
-      "duration_s": 2.819,
+      "duration_s": 6.096,
+      "attempt": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": true,
+      "duration_s": 3.037,
+      "attempt": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": true,
+      "duration_s": 12.576,
+      "attempt": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": true,
+      "duration_s": 10.435,
+      "attempt": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": true,
+      "duration_s": 9.01,
+      "attempt": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": true,
+      "duration_s": 8.608,
+      "attempt": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": false,
+      "duration_s": 0.476,
+      "attempt": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": false,
+      "duration_s": 0.464,
+      "attempt": 2
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": false,
+      "duration_s": 0.462,
+      "attempt": 3
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": true,
+      "duration_s": 7.796,
+      "attempt": 4
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": true,
+      "duration_s": 9.462,
+      "attempt": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": true,
+      "duration_s": 8.961,
+      "attempt": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": true,
+      "duration_s": 8.166,
+      "attempt": 1
+    },
+    {
+      "provider": "gemini",
+      "model": "gemini-3.6-flash",
+      "ok": true,
+      "duration_s": 7.371,
       "attempt": 1
     }
   ]
