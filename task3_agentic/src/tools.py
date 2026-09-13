@@ -72,29 +72,6 @@ def fail(error: str, suggestion: str) -> dict[str, Any]:
     return {"ok": False, "data": None, "error": error, "suggestion": suggestion}
 
 
-
-
-def _task1_sentiment_schemas():
-    """Return (AggregateSentiment, HeadlineSentimentBatch) from Task 1's schemas.
-
-    Imported by file path rather than by module name: `schemas` is ambiguous in
-    this process because Task 1 and Task 3 each define one. Cached in
-    sys.modules under a unique key so the load happens once.
-    """
-    import importlib.util
-    import sys as _sys
-
-    key = "task1_financial_schemas"
-    module = _sys.modules.get(key)
-    if module is None:
-        path = Path(__file__).resolve().parents[2] / "task1_financial" / "src" / "schemas.py"
-        spec = importlib.util.spec_from_file_location(key, path)
-        module = importlib.util.module_from_spec(spec)
-        _sys.modules[key] = module
-        spec.loader.exec_module(module)
-    return module.AggregateSentiment, module.HeadlineSentimentBatch
-
-
 @dataclass
 class ToolContext:
     """Shared state the tools close over.
@@ -155,6 +132,27 @@ def _finite(value: Any, places: int = 4) -> float | None:
     except (TypeError, ValueError):
         return None
     return round(result, places) if np.isfinite(result) else None
+
+
+# Characters that routinely appear in scraped headlines and routinely break
+# downstream JSON parsers: non-breaking and zero-width spaces, directional marks,
+# and line/paragraph separators. The failing tool call that prompted this
+# contained a literal \xa0 pair ("Shiba\xa0un\xa0"). Normalising at the boundary
+# is cheaper than defending against it in three different parsers.
+_INVISIBLE = dict.fromkeys(
+    [0x00A0, 0x200B, 0x200C, 0x200D, 0x2060, 0xFEFF, 0x200E, 0x200F, 0x2028, 0x2029],
+    " ",
+)
+
+
+def _clean_headline(text: str) -> str:
+    """Normalise a scraped headline to plain, single-spaced text."""
+    if not text:
+        return ""
+    cleaned = str(text).translate(_INVISIBLE)
+    # Strip any remaining C0/C1 control characters.
+    cleaned = "".join(ch for ch in cleaned if ch == "\n" or ord(ch) >= 0x20)
+    return " ".join(cleaned.split()).strip()
 
 
 # ---------------------------------------------------------------------------
@@ -284,7 +282,12 @@ def build_tools(context: ToolContext, names: list[str] | None = None) -> list[An
                 from data_pipeline import fetch_news  # Task 1's fallback chain.
 
                 items, warnings = fetch_news(ticker.upper(), minimum=n)
-                payload = [item.to_dict() for item in items][:n]
+                payload = []
+                for item in items[:n]:
+                    record = item.to_dict()
+                    record["headline"] = _clean_headline(record.get("headline", ""))
+                    if record["headline"]:
+                        payload.append(record)
             except Exception as exc:  # noqa: BLE001
                 result = fail(
                     f"News retrieval failed for {ticker}: {exc}",
@@ -377,8 +380,12 @@ def build_tools(context: ToolContext, names: list[str] | None = None) -> list[An
 
     # -- 4 --------------------------------------------------------------------
     @tool
-    def llm_sentiment(headlines: list[str]) -> dict:
-        """Score a list of news headlines for market sentiment using a language model.
+    def llm_sentiment(ticker: str, limit: int = 15) -> dict:
+        """Score this ticker's recent news headlines for market sentiment.
+
+        Reads the headlines already retrieved for this ticker in this session and
+        classifies them. You do NOT pass the headline text — just the ticker. If
+        no headlines have been fetched yet, this tool fetches them itself.
 
         Returns an aggregate sentiment score from -1 (strongly negative) to +1
         (strongly positive), a label, per-headline classifications with individual
@@ -386,25 +393,86 @@ def build_tools(context: ToolContext, names: list[str] | None = None) -> list[An
         weighted by per-headline confidence, so a hedged classification cannot
         outvote a decisive one.
 
-        USE THIS AFTER get_news or web_search — pass it the headline strings you
-        retrieved. It does not fetch anything itself.
-
         Sentiment is judged by likely SHARE PRICE impact, not by whether the news
         is pleasant: a large restructuring is frequently positive for the price.
 
-        Cost: one LLM call, roughly 1-3 seconds.
+        Cost: one LLM call, roughly 1-3 seconds, plus a news fetch if the cache
+        is cold.
 
         Args:
-            headlines: The headline strings to classify. Between 1 and 25.
+            ticker: Stock symbol, e.g. "NVDA".
+            limit: Maximum headlines to classify. Default 15, cap 25.
         """
-        with context.traced("llm_sentiment", {"headline_count": len(headlines or [])}) as slot:
-            if not headlines:
+        # WHY THIS TAKES A TICKER AND NOT A LIST OF HEADLINES
+        # ---------------------------------------------------
+        # The first version of this tool had the signature
+        # `llm_sentiment(headlines: list[str])`. It failed in production against
+        # Groq's Llama 3.3 with:
+        #
+        #   400 tool_use_failed - "Failed to parse tool call arguments as JSON"
+        #   failed_generation: '{"name":"llm_sentiment","arguments":{"headlines":
+        #   ["Nscale's Funding Talks...", ... ,"Shiba\xa0un\xa0..."}"}'
+        #
+        # The model was copying fifteen full headlines verbatim into the tool
+        # arguments, exhausted its output-token budget mid-string, and emitted
+        # truncated JSON that the provider's parser rejected. The whole run died.
+        #
+        # The fix is not a bigger token budget - it is the right signature. TOOL
+        # ARGUMENTS SHOULD BE REFERENCES, NOT PAYLOADS. The headlines are already
+        # in the agent's context from get_news and already in this session's
+        # cache; making the model re-serialise ~1,500 tokens of text it already
+        # has is pure waste and a large, avoidable failure surface.
+        #
+        # Passing a ticker instead has three benefits beyond not crashing:
+        #   * ~20 tokens of arguments instead of ~1,500;
+        #   * the model cannot PARAPHRASE a headline while copying it, which
+        #     would silently corrupt the sentiment input and is invisible in the
+        #     output;
+        #   * the classified text is guaranteed identical to what get_news
+        #     returned, so the trace is reproducible.
+        ticker = (ticker or "").strip().upper()
+        limit = max(1, min(int(limit), 25))
+
+        with context.traced("llm_sentiment", {"ticker": ticker, "limit": limit}) as slot:
+            if not ticker:
                 result = fail(
-                    "No headlines supplied to llm_sentiment.",
-                    "Call get_news or web_search first, then pass the headline strings here.",
+                    "llm_sentiment requires a ticker symbol.",
+                    "Call it as llm_sentiment(ticker='NVDA').",
                 )
                 slot["output"] = result
                 return result
+
+            # Prefer the session cache; fetch only if nothing has been retrieved.
+            cached = context.news_cache.get(ticker)
+            if not cached:
+                try:
+                    from data_pipeline import fetch_news
+
+                    items, _ = fetch_news(ticker, minimum=limit)
+                    cached = [item.to_dict() for item in items]
+                    if cached:
+                        context.news_cache[ticker] = cached
+                except Exception as exc:  # noqa: BLE001
+                    result = fail(
+                        f"No cached headlines for {ticker} and the fetch failed: {exc}",
+                        "Call get_news first, or proceed without sentiment and declare "
+                        "it as a data gap.",
+                    )
+                    slot["output"] = result
+                    return result
+
+            headlines = [_clean_headline(h.get("headline", "")) for h in (cached or [])][:limit]
+            headlines = [h for h in headlines if h]
+
+            if not headlines:
+                result = fail(
+                    f"No headlines available for {ticker}.",
+                    "Call get_news first; if it also returns nothing, note the absence "
+                    "of company news as a data gap.",
+                )
+                slot["output"] = result
+                return result
+
             if context.llm is None:
                 result = fail(
                     "No LLM configured for sentiment scoring.",
@@ -414,19 +482,14 @@ def build_tools(context: ToolContext, names: list[str] | None = None) -> list[An
                 return result
 
             try:
-                # Task 1 and Task 3 both ship a module named `schemas`, and
-                # task3_agentic/src sits earlier on sys.path, so a plain
-                # `from schemas import ...` binds to the Task 3 module and
-                # raises ImportError. Load Task 1's module by file path under a
-                # distinct name so both remain importable in one process.
-                AggregateSentiment, HeadlineSentimentBatch = _task1_sentiment_schemas()
+                from schemas import AggregateSentiment, HeadlineSentimentBatch  # Task 1 schemas.
                 import prompts
 
-                trimmed = [h for h in headlines if h and h.strip()][:25]
+                trimmed = headlines
                 block = "\n".join(f"{i + 1}. {h}" for i, h in enumerate(trimmed))
                 messages = prompts.render(
                     prompts.HEADLINE_SENTIMENT,
-                    ticker="the subject company", company="the subject company",
+                    ticker=ticker, company=ticker,
                     count=len(trimmed), headline_block=block,
                 )
                 payload = context.llm.chat_json(messages, temperature=0.0,

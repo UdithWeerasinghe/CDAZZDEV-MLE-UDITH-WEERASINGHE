@@ -66,16 +66,6 @@ from schemas import (  # noqa: E402
 )
 from tools import AGENT_A_TOOLS, AGENT_B_TOOLS, ToolContext, build_tools  # noqa: E402
 
-# `add_messages` must be resolvable at MODULE level, not only inside the builder
-# functions. `from __future__ import annotations` above turns every annotation
-# into a string, and LangGraph resolves a state class's annotations with
-# `get_type_hints()` against the *defining module's* globals. A name imported
-# inside a function is invisible there, so the reducer lookup raises NameError.
-try:
-    from langgraph.graph.message import add_messages  # noqa: E402
-except ImportError:  # langgraph is not required by the offline test suite.
-    add_messages = None  # type: ignore[assignment]
-
 logger = logging.getLogger(__name__)
 
 MAX_AGENT_ITERATIONS = 8      # Hard stop. An agent that will not finish must not run forever.
@@ -191,6 +181,106 @@ def build_chat_model(temperature: float = 0.1, max_tokens: int = 2048) -> Any:
         "No provider configured. Set GROQ_API_KEY or OPENROUTER_API_KEY "
         "in your environment or Colab Secrets."
     )
+
+
+def is_tool_call_parse_error(exc: Exception) -> bool:
+    """True when the provider rejected the model's OWN tool call as unparseable.
+
+    Groq returns 400 with code `tool_use_failed` and a `failed_generation` field
+    when the model emits malformed tool-call JSON - typically because it ran out
+    of output tokens midway through serialising a large argument. This is a
+    model failure surfaced as a transport error, and it is distinct from a tool
+    raising: no tool ever ran, so the tool-level error handling never sees it.
+    """
+    text = f"{type(exc).__name__}: {exc}".lower()
+    return any(
+        marker in text
+        for marker in (
+            "tool_use_failed",
+            "failed to parse tool call",
+            "failed_generation",
+            "invalid tool call",
+        )
+    )
+
+
+# Sent back to the model after it emits an unparseable tool call. Names the
+# specific mistake rather than saying "try again", because a generic retry
+# reproduces the same oversized call.
+TOOL_CALL_REPAIR = (
+    "Your previous tool call could not be parsed - it was cut off partway through "
+    "its arguments, most likely because the arguments were too long.\n\n"
+    "Retry with SHORT arguments. Tool arguments are references, not payloads: pass "
+    "identifiers like a ticker symbol, never long lists of text you already have in "
+    "this conversation. Call exactly one tool, and if you were trying to score "
+    "sentiment, call llm_sentiment with only the ticker."
+)
+
+
+def invoke_with_recovery(
+    model_with_tools: Any,
+    messages: list[Any],
+    *,
+    max_attempts: int = 3,
+    label: str = "agent",
+) -> Any:
+    """Invoke a tool-bound model, recovering from malformed tool calls.
+
+    The README previously listed retry-on-malformed-tool-call as a known gap.
+    This is that gap closed, and it exists because the failure was observed in a
+    real run: Llama 3.3 tried to copy fifteen headlines into a tool argument,
+    truncated, and the 400 propagated out of the graph and killed the notebook.
+
+    Recovery ladder, in order:
+      1. Retry with a corrective message naming the specific mistake.
+      2. Retry once more without tools bound at all, so the model must answer in
+         prose rather than a tool call.
+      3. Return a synthetic assistant message with no tool calls, which routes
+         the graph to its synthesis node.
+
+    The run degrades to a report built on whatever was already gathered rather
+    than crashing - the same principle the tool layer already follows.
+    """
+    from langchain_core.messages import AIMessage, HumanMessage
+
+    working = list(messages)
+    last_error: Exception | None = None
+
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return model_with_tools.invoke(working)
+        except Exception as exc:  # noqa: BLE001 - classified below
+            last_error = exc
+            if not is_tool_call_parse_error(exc):
+                raise
+            logger.warning(
+                "[%s] attempt %d: provider rejected a malformed tool call; retrying.",
+                label, attempt,
+            )
+            print(f"   RECOVERED ← malformed tool call rejected by the provider "
+                  f"(attempt {attempt}); retrying with corrective guidance")
+            working = list(messages) + [HumanMessage(content=TOOL_CALL_REPAIR)]
+
+    # Last resort: ask without tools so no tool call can be malformed.
+    try:
+        bare = getattr(model_with_tools, "bound", None) or model_with_tools
+        response = bare.invoke(
+            list(messages)
+            + [HumanMessage(content=(
+                "Do not call any tool. Summarise what you have established so far "
+                "from the tool results already in this conversation, and state what "
+                "you were unable to retrieve."
+            ))]
+        )
+        print("   RECOVERED ← tool calling disabled for one turn; continuing in prose")
+        return response
+    except Exception:  # noqa: BLE001
+        logger.error("[%s] unrecoverable after %d attempts: %s", label, max_attempts, last_error)
+        return AIMessage(content=(
+            "I was unable to issue a further tool call because the provider rejected "
+            "the generated call as malformed. Proceeding to synthesis using the "
+            "evidence gathered so far; this limitation is recorded as a data caveat."
+        ))
 
 
 def structured_call(
@@ -330,7 +420,7 @@ def build_single_agent(
         iterations: int
         report: ResearchReport | None
 
-    def agent_node(state) -> dict:
+    def agent_node(state: State) -> dict:
         """Decide the next action. This node IS the 'replan' half of the cycle."""
         iterations = state.get("iterations", 0)
         if iterations >= max_iterations:
@@ -344,17 +434,19 @@ def build_single_agent(
                 ))],
                 "iterations": iterations + 1,
             }
-        response = model_with_tools.invoke(state["messages"])
+        response = invoke_with_recovery(
+            model_with_tools, state["messages"], label="single_agent"
+        )
         return {"messages": [response], "iterations": iterations + 1}
 
-    def route(state) -> Literal["tools", "synthesise"]:
+    def route(state: State) -> Literal["tools", "synthesise"]:
         """Conditional edge - the model's own output decides, nothing is scripted."""
         last = state["messages"][-1]
         if getattr(last, "tool_calls", None) and state.get("iterations", 0) <= max_iterations:
             return "tools"
         return "synthesise"
 
-    def synthesise_node(state) -> dict:
+    def synthesise_node(state: State) -> dict:
         """Force the final answer into the required three-section structure."""
         instruction = HumanMessage(content=(
             "Now produce the final research report from everything you gathered.\n\n"
@@ -582,21 +674,22 @@ def build_multi_agent(
         forced_critique: bool
 
     # -- Agent A ------------------------------------------------------------
-    def agent_a_node(state) -> dict:
+    def agent_a_node(state: State) -> dict:
         count = state.get("a_iterations", 0)
         if count >= max_iterations:
             return {"a_messages": [AIMessage(content="Measurement budget reached; "
                                                      "producing the brief now.")],
                     "a_iterations": count + 1}
-        return {"a_messages": [model_a.invoke(state["a_messages"])], "a_iterations": count + 1}
+        response = invoke_with_recovery(model_a, state["a_messages"], label="AgentA")
+        return {"a_messages": [response], "a_iterations": count + 1}
 
-    def route_a(state) -> Literal["tools_a", "handoff"]:
+    def route_a(state: State) -> Literal["tools_a", "handoff"]:
         last = state["a_messages"][-1]
         if getattr(last, "tool_calls", None) and state.get("a_iterations", 0) <= max_iterations:
             return "tools_a"
         return "handoff"
 
-    def handoff_node(state) -> dict:
+    def handoff_node(state: State) -> dict:
         """Agent A → Agent B. Validated QuantBrief or the pipeline stops here."""
         print("\n── HANDOFF · Agent A → Agent B ──")
         instruction = HumanMessage(content=(
@@ -632,21 +725,22 @@ def build_multi_agent(
         return {"quant_brief": brief, "b_messages": [SystemMessage(content=AGENT_B_SYSTEM), seed]}
 
     # -- Agent B ------------------------------------------------------------
-    def agent_b_node(state) -> dict:
+    def agent_b_node(state: State) -> dict:
         count = state.get("b_iterations", 0)
         if count >= max_iterations:
             return {"b_messages": [AIMessage(content="Research budget reached; proceeding.")],
                     "b_iterations": count + 1}
-        return {"b_messages": [model_b.invoke(state["b_messages"])], "b_iterations": count + 1}
+        response = invoke_with_recovery(model_b, state["b_messages"], label="AgentB")
+        return {"b_messages": [response], "b_iterations": count + 1}
 
-    def route_b(state) -> Literal["tools_b", "critique"]:
+    def route_b(state: State) -> Literal["tools_b", "critique"]:
         last = state["b_messages"][-1]
         if getattr(last, "tool_calls", None) and state.get("b_iterations", 0) <= max_iterations:
             return "tools_b"
         return "critique"
 
     # -- Critique loop ------------------------------------------------------
-    def critique_node(state) -> dict:
+    def critique_node(state: State) -> dict:
         """Agent B decides whether to send ONE clarification back to Agent A."""
         if state.get("critique_rounds", 0) >= MAX_CRITIQUE_ROUNDS:
             return {"clarification": None}
@@ -708,10 +802,10 @@ def build_multi_agent(
         return {"clarification": request, "forced_critique": forced,
                 "critique_rounds": state.get("critique_rounds", 0) + 1}
 
-    def route_critique(state) -> Literal["clarify_a", "final_report"]:
+    def route_critique(state: State) -> Literal["clarify_a", "final_report"]:
         return "clarify_a" if state.get("clarification") else "final_report"
 
-    def clarify_a_node(state) -> dict:
+    def clarify_a_node(state: State) -> dict:
         """Agent A answers. It may call its tools again to do so."""
         request = state["clarification"]
         print("\n── CRITIQUE · Agent A responding ──")
@@ -746,7 +840,7 @@ def build_multi_agent(
         ))
         return {"clarification_answer": answer, "b_messages": [incorporate]}
 
-    def final_report_node(state) -> dict:
+    def final_report_node(state: State) -> dict:
         print("\n── FINAL REPORT · Agent B ──")
         brief = state.get("quant_brief")
         instruction = HumanMessage(content=(

@@ -316,6 +316,56 @@ def test_tool_restriction() -> None:
           "so every number must come through the handoff")
 
 
+def test_headline_sanitisation() -> None:
+    """Invisible characters in scraped headlines must not reach a JSON parser.
+
+    The tool call that crashed a live run contained a literal \\xa0 pair
+    ("Shiba\\xa0un\\xa0"). Normalising at the boundary is cheaper than defending
+    against it in three separate parsers.
+    """
+    print("\nHeadline sanitisation (regression: live tool_use_failed)")
+    from tools import _clean_headline  # noqa: PLC0415
+
+    dirty = "Shiba un Coin​ Surges﻿  —  Analysts React"
+    clean = _clean_headline(dirty)
+    check("Non-breaking spaces removed", " " not in clean, repr(clean[:48]))
+    check("Zero-width characters removed",
+          not any(c in clean for c in "​‌‍﻿"), repr(clean[:48]))
+    check("Line separators removed", " " not in clean)
+    check("Whitespace collapsed", "  " not in clean, repr(clean))
+    check("Text preserved", clean.startswith("Shiba un Coin Surges"), repr(clean))
+    check("Empty input is safe", _clean_headline("") == "" and _clean_headline(None) == "")
+    check("Result is JSON-safe", json.loads(json.dumps({"h": clean}))["h"] == clean)
+
+
+def test_malformed_tool_call_detection() -> None:
+    """The recovery path must recognise the provider's real rejection message.
+
+    Verbatim from a live Groq run that killed the notebook before this was
+    handled. If the classifier misses it, `invoke_with_recovery` re-raises and
+    we are back to a crashed run.
+    """
+    print("\nMalformed tool-call recovery (Task 3A — 7 marks)")
+    from agents import is_tool_call_parse_error  # noqa: PLC0415
+
+    real = (
+        "Error code: 400 - {'error': {'message': 'Failed to parse tool call arguments "
+        "as JSON', 'type': 'invalid_request_error', 'code': 'tool_use_failed', "
+        "'failed_generation': '{\"name\": \"llm_sentiment\", \"arguments\": "
+        "{\"headlines\":[\"Nscale...\",\"Shiba\\xa0un\\xa0...\"}\"}'}}"
+    )
+    check("Real Groq tool_use_failed detected",
+          is_tool_call_parse_error(RuntimeError(real)), "verbatim from the failing run")
+    check("Alternate phrasing detected",
+          is_tool_call_parse_error(ValueError("invalid tool call emitted by model")))
+
+    for benign in ("Connection reset by peer",
+                   "rate limit exceeded, please retry",
+                   "model not found: llama-3.1-9999"):
+        check(f"Not misclassified: {benign[:28]!r}",
+              not is_tool_call_parse_error(RuntimeError(benign)))
+
+
 def test_tool_envelope() -> None:
     print("\nTool result envelope (Task 3A — 7 marks)")
     good = ok({"price": 181.9}, count=1)
@@ -331,7 +381,8 @@ def test_tool_envelope() -> None:
 if __name__ == "__main__":
     print("\nTask 3 offline verification\n" + "=" * 74)
     for fn in (test_handoff_schema, test_clarification_contract, test_report_validators,
-               test_tracer, test_cache, test_tool_restriction, test_tool_envelope):
+               test_tracer, test_cache, test_tool_restriction, test_tool_envelope,
+               test_headline_sanitisation, test_malformed_tool_call_detection):
         fn()
     print("\n" + "=" * 74)
     print("ALL CHECKS PASSED" if not FAILURES else f"{FAILURES} CHECK(S) FAILED")

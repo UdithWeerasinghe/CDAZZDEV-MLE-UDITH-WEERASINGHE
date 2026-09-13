@@ -135,11 +135,18 @@ class FlakyStubLLM:
 
 def synthetic_equity(ticker: str = "NVDA") -> EquityData:
     rng = np.random.default_rng(11)
-    n = 520
+
+    # Build the index FIRST and take n from it. `bdate_range(end=..., periods=n)`
+    # returns n-1 dates when `end` itself falls on a weekend, so hardcoding n and
+    # generating arrays of that length raises a length-mismatch every Saturday
+    # and Sunday. A test that only fails at weekends is worse than one that
+    # always fails, because it looks like flakiness rather than a bug.
+    index = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=520)
+    n = len(index)
+
     drift = np.linspace(0.0009, 0.0004, n)
     shocks = rng.normal(0, 1, n) * np.where(np.arange(n) < 300, 0.014, 0.024)
     close = 95.0 * np.exp(np.cumsum(drift + shocks))
-    index = pd.bdate_range(end=pd.Timestamp.today().normalize(), periods=n)
 
     frame = pd.DataFrame(
         {

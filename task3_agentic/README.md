@@ -42,6 +42,24 @@ Agent A omits it and Agent B reads silence as *"measured and unremarkable"* — 
 hedge on a number nobody took. Making the declaration mandatory turns a silent failure into
 a visible one. It is the single most load-bearing schema decision in the task.
 
+## The bug a live run caught
+
+Task 3 crashed against Groq's Llama 3.3 with `400 tool_use_failed` — the model was copying
+fifteen full headlines verbatim into `llm_sentiment`'s arguments, ran out of output tokens
+mid-string, and emitted truncated JSON.
+
+The fix was not a bigger token budget. It was the **tool signature**:
+`llm_sentiment(headlines: list[str])` made the model re-serialise ~1,500 tokens it already
+had in context. **Tool arguments should be references, not payloads.** It now takes
+`(ticker, limit)` and reads the session cache — ~20 tokens of arguments, and it also removes
+the risk of a model *paraphrasing* a headline while copying it, which would corrupt the
+sentiment input invisibly.
+
+Two defences sit alongside it: `invoke_with_recovery` retries a rejected tool call with
+corrective guidance, then without tools, then degrades to synthesis rather than crashing;
+and headlines are stripped of non-breaking and zero-width characters at the boundary.
+`tests/test_task3_offline.py` covers both using the verbatim error text.
+
 ## Dashboard (bonus)
 
 ```bash

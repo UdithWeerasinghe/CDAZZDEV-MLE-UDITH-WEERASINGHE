@@ -71,6 +71,32 @@ that *differ* — the very tokens making near-duplicates look distinct. The guar
 accepted a dataset the brief awards **zero marks** for, while reporting a clean similarity
 profile. IDF is right for retrieval and backwards for duplicate detection.
 
+### The bug a live run caught
+
+Task 3 crashed mid-run against Groq's Llama 3.3:
+
+```
+400 tool_use_failed — "Failed to parse tool call arguments as JSON"
+failed_generation: '{"name":"llm_sentiment","arguments":{"headlines":
+["Nscale's Funding Talks…", …, "Shiba\xa0un\xa0..."}"}'
+```
+
+The model was copying fifteen full headlines verbatim into the tool arguments, exhausted its
+output-token budget mid-string, and emitted truncated JSON the provider rejected.
+
+The instinct is to raise `max_tokens`. The actual fault was my **tool signature**:
+`llm_sentiment(headlines: list[str])` forced the model to re-serialise ~1,500 tokens of text
+it already had in context. **Tool arguments should be references, not payloads.** The
+signature is now `llm_sentiment(ticker: str, limit: int)`, reading from the session cache —
+~20 tokens of arguments, the failure class gone, and a hole closed I had not considered: a
+model copying text can silently *paraphrase* it, corrupting the sentiment input invisibly.
+
+Two defences sit alongside the real fix. `invoke_with_recovery` catches a provider's
+tool-call rejection and retries with corrective guidance, then without tools bound at all,
+then degrades to synthesis rather than crashing. And headlines are stripped of non-breaking
+and zero-width characters at the boundary. Both are covered by regression tests that use the
+verbatim error text from the failing run.
+
 ---
 
 ## Quick start
@@ -210,8 +236,9 @@ Stated plainly rather than discovered in interview:
   A 3-seed sweep with variance bars would be honest.
 * **The critique loop is capped at one round** — no principled convergence criterion, and
   multi-round critique risks oscillation.
-* **Free-tier tool calling is the weakest link in Task 3.** Llama 3.3 occasionally emits a
-  malformed tool call, costing an iteration. Production would need retry-on-malformed-call.
+* **Free-tier tool calling is the weakest link in Task 3.** This one bit in a live run and
+  is now fixed — see below. Residual risk remains: a model that will not emit a parseable
+  tool call after two corrective retries degrades to a report built on partial evidence.
 * **The hedge-strategy validator** checks for a figure and a named instrument. That catches
   hand-waving; it cannot verify the recommendation is *sound*.
 
