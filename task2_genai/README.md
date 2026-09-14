@@ -56,3 +56,4 @@ reported alongside it — the last being the number a credit risk team would act
 python task2_genai/tests/test_diversity.py   # proves mode collapse is detected
 python task2_genai/tests/test_evaluate.py    # proves the metrics separate base from tuned
 ```
+## HuggingFace model link : https://huggingface.co/UdithWeerasingheHF/mistral-7b-credit-clause-extraction 
